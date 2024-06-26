@@ -1,3 +1,4 @@
+# Copyright 2024 Takumi Asada.
 # Copyright 2020 Andy McEvoy.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -172,9 +173,19 @@ class GenerateDhParams(rclpy.node.Node):
         pd_frame = pd.DataFrame(robot_dh_params, columns=['joint', 'parent', 'child', 'd', 'theta', 'r', 'alpha'])
         pd_frame['theta'] = pd_frame['theta'] * 180.0 / math.pi
         pd_frame['alpha'] = pd_frame['alpha'] * 180.0 / math.pi
+
+        base_filename = os.path.splitext(os.path.basename(self.urdf_file))[0]
+        save_dir = os.path.join(os.getcwd(), 'src/urdf_to_dh/dh_parameters')
+        csv_file_path = os.path.join(save_dir, f"{base_filename}_dh.csv")
+        markdown_file_path = os.path.join(save_dir, f"{base_filename}_dh.md")
+        # Save CSV file.
         print("\nDH Parameters: (csv)")
+        pd_frame.to_csv(csv_file_path, index=False)
         print(pd_frame.to_csv())
+        # Save Markdown file.
         print("\nDH Parameters: (markdown)")
+        with open(markdown_file_path, 'w') as file:
+            file.write(pd_frame.to_markdown(index=False))
         print(pd_frame.to_markdown())
 
 
