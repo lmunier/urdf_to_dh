@@ -2,6 +2,8 @@ import numpy as np
 import math
 
 # Kinematics helper functions
+
+
 def x_rotation(theta):
     """The 3x3 rotation matrix for a rotation of `theta` radians about the x-axis."""
     return np.array([
@@ -36,18 +38,21 @@ def get_extrinsic_rotation(rpy):
     Returns:
         A 3x3 numpy array for the resulting extrinsic rotation.
     """
-
     x_rot = x_rotation(rpy[0])
     y_rot = y_rotation(rpy[1])
     z_rot = z_rotation(rpy[2])
+
     return np.matmul(z_rot, np.matmul(y_rot, x_rot))
 
-def inv_tf(tf):
+
+def inv_tf(tf) -> np.ndarray:
     """Get the inverse of a homogeneous transform"""
     inv_tf = np.eye(4)
     inv_tf[0:3, 0:3] = np.transpose(tf[0:3, 0:3])
     inv_tf[0:3, 3] = -1.0 * np.matmul(np.transpose(tf[0:3, 0:3]), tf[0:3, 3])
+
     return inv_tf
+
 
 def get_dh_frame(dh_params):
     """Get the tf for the given dh parameters."""
@@ -68,7 +73,9 @@ def get_dh_frame(dh_params):
     dh_frame[1, 2] = -math.cos(theta) * math.sin(alpha)
     dh_frame[1, 3] = r * math.sin(theta)
 
+    dh_frame[2, 0] = 0
     dh_frame[2, 1] = math.sin(alpha)
     dh_frame[2, 2] = math.cos(alpha)
     dh_frame[2, 3] = d
+
     return dh_frame
