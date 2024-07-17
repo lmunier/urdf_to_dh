@@ -2,12 +2,11 @@ import numpy as np
 
 EPSILON = 1.0e-5
 
+
 def are_parallel(vec1, vec2):
     """Determine if two vectors are parallel."""
     vec1_unit = vec1 / np.linalg.norm(vec1)
     vec2_unit = vec2 / np.linalg.norm(vec2)
-
-
 
     return np.all(abs(np.cross(vec1_unit, vec2_unit)) < EPSILON)
 
@@ -46,7 +45,7 @@ def lines_intersect(point1, vec1, point2, vec2):
         return False
 
     # Test if lines intersect. Need to find non-singular pair to solve for coefficients
-    for idx in range(0,3):
+    for idx in range(0, 3):
         i = idx
         j = (idx + 1) % 3
         A = np.array([[vec1[i], -vec2[i]], [vec1[j], -vec2[j]]])
