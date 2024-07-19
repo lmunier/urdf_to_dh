@@ -1,34 +1,63 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# kinematics_helpers.py
+
+"""A module containing helper functions for kinematics calculations."""
+
+
 import numpy as np
 import math
 
-# Kinematics helper functions
 
+def x_rotation(theta: float) -> np.ndarray:
+    """The 3x3 rotation matrix for a rotation of `theta` radians about the x-axis.
 
-def x_rotation(theta):
-    """The 3x3 rotation matrix for a rotation of `theta` radians about the x-axis."""
+    Args:
+        theta: The angle in radians to rotate about the x-axis.
+
+    Returns:
+        A 3x3 numpy array representing the rotation matrix.
+    """
     return np.array([
         [1, 0, 0],
         [0, math.cos(theta), -math.sin(theta)],
-        [0, math.sin(theta), math.cos(theta)]])
+        [0, math.sin(theta), math.cos(theta)]
+    ])
 
 
-def y_rotation(theta):
-    """The 3x3 rotation matrix for a rotation of `theta` radians about the y-axis."""
+def y_rotation(theta: float) -> np.ndarray:
+    """The 3x3 rotation matrix for a rotation of `theta` radians about the y-axis.
+
+    Args:
+        theta: The angle in radians to rotate about the y-axis.
+
+    Returns:
+        A 3x3 numpy array representing the rotation matrix.
+    """
     return np.array([
         [math.cos(theta), 0, math.sin(theta)],
         [0, 1, 0],
-        [-math.sin(theta), 0, math.cos(theta)]])
+        [-math.sin(theta), 0, math.cos(theta)]
+    ])
 
 
-def z_rotation(theta):
-    """The 3x3 rotation matrix for a rotation of `theta` radians about the z-axis."""
+def z_rotation(theta: float) -> np.ndarray:
+    """The 3x3 rotation matrix for a rotation of `theta` radians about the z-axis.
+
+    Args:
+        theta: The angle in radians to rotate about the z-axis.
+
+    Returns:
+        A 3x3 numpy array representing the rotation matrix.
+    """
     return np.array([
         [math.cos(theta), -math.sin(theta), 0],
         [math.sin(theta), math.cos(theta), 0],
-        [0, 0, 1]])
+        [0, 0, 1]
+    ])
 
 
-def get_extrinsic_rotation(rpy):
+def get_extrinsic_rotation(rpy: np.ndarray) -> np.ndarray:
     """Gets the extrinsic rotation matrix defined by roll about x, then pitch about y, then yaw
     about z. This is the rotation matrix used in URDF.
 
@@ -45,8 +74,15 @@ def get_extrinsic_rotation(rpy):
     return np.matmul(z_rot, np.matmul(y_rot, x_rot))
 
 
-def inv_tf(tf) -> np.ndarray:
-    """Get the inverse of a homogeneous transform"""
+def inv_tf(tf: np.ndarray) -> np.ndarray:
+    """Get the inverse of a homogeneous transform.
+
+    Args:
+        tf: A 4x4 numpy array representing the homogeneous transform.
+
+    Returns:
+        A 4x4 numpy array representing the inverse of the homogeneous transform.
+    """
     inv_tf = np.eye(4)
     inv_tf[0:3, 0:3] = np.transpose(tf[0:3, 0:3])
     inv_tf[0:3, 3] = -1.0 * np.matmul(np.transpose(tf[0:3, 0:3]), tf[0:3, 3])
@@ -54,28 +90,35 @@ def inv_tf(tf) -> np.ndarray:
     return inv_tf
 
 
-def get_dh_frame(dh_params):
-    """Get the tf for the given dh parameters."""
+def get_dh_matrix(dh_params: list) -> np.ndarray:
+    """Get the tf for the given dh parameters.
+
+    Args:
+        dh_params: A list of the 4 denavit hartenberg parameters.
+
+    Returns:
+        A 4x4 numpy array representing the dh matrix.
+    """
     d = dh_params[0]
     theta = dh_params[1]
     r = dh_params[2]
     alpha = dh_params[3]
 
-    dh_frame = np.eye(4)
+    dh_matrix = np.eye(4)
 
-    dh_frame[0, 0] = math.cos(theta)
-    dh_frame[0, 1] = -math.sin(theta) * math.cos(alpha)
-    dh_frame[0, 2] = math.sin(theta) * math.sin(alpha)
-    dh_frame[0, 3] = r * math.cos(theta)
+    dh_matrix[0, 0] = math.cos(theta)
+    dh_matrix[0, 1] = -math.sin(theta) * math.cos(alpha)
+    dh_matrix[0, 2] = math.sin(theta) * math.sin(alpha)
+    dh_matrix[0, 3] = r * math.cos(theta)
 
-    dh_frame[1, 0] = math.sin(theta)
-    dh_frame[1, 1] = math.cos(theta) * math.cos(alpha)
-    dh_frame[1, 2] = -math.cos(theta) * math.sin(alpha)
-    dh_frame[1, 3] = r * math.sin(theta)
+    dh_matrix[1, 0] = math.sin(theta)
+    dh_matrix[1, 1] = math.cos(theta) * math.cos(alpha)
+    dh_matrix[1, 2] = -math.cos(theta) * math.sin(alpha)
+    dh_matrix[1, 3] = r * math.sin(theta)
 
-    dh_frame[2, 0] = 0
-    dh_frame[2, 1] = math.sin(alpha)
-    dh_frame[2, 2] = math.cos(alpha)
-    dh_frame[2, 3] = d
+    dh_matrix[2, 0] = 0
+    dh_matrix[2, 1] = math.sin(alpha)
+    dh_matrix[2, 2] = math.cos(alpha)
+    dh_matrix[2, 3] = d
 
-    return dh_frame
+    return dh_matrix
