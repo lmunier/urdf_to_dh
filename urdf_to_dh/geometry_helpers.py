@@ -54,14 +54,12 @@ def lines_intersect(point1: np.ndarray, vec1: np.ndarray, point2: np.ndarray, ve
     for idx in range(0, 3):
         i = idx
         j = (idx + 1) % 3
-        A = np.array([[vec1[i], -vec2[i]], [vec1[j], -vec2[j]]])
-        b = np.array([[point2[i] - point1[i]], [point2[j] - point1[j]]])
+        mat_a = np.array([[vec1[i], -vec2[i]], [vec1[j], -vec2[j]]])
+        vec_b = np.array([[point2[i] - point1[i]], [point2[j] - point1[j]]])
 
-        # If singular matrix, go to next set
-        if np.isclose(np.linalg.det(A), 0):
-            continue
-        else:
-            x = np.linalg.solve(A, b)
+        # If not singular matrix, solve for coefficients
+        if not np.isclose(np.linalg.det(mat_a), 0):
+            x = np.linalg.solve(mat_a, vec_b)
 
             # Test if solution generates a point of intersection
             p1 = point1 + x[0] * vec1

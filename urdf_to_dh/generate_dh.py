@@ -16,18 +16,14 @@
 
 import rclpy
 import rclpy.node
-from ament_index_python.packages import get_package_share_directory
-
-
-import xml.etree.ElementTree as ET
-from anytree import AnyNode, LevelOrderIter
-from anytree import RenderTree
 import numpy as np
 import os
 import pandas as pd
 import pprint
-from math import atan2, sqrt
+import xml.etree.ElementTree as ET
 
+from anytree import AnyNode, LevelOrderIter, RenderTree
+from math import atan2, sqrt
 
 import urdf_to_dh.kinematics_helpers as kh
 import urdf_to_dh.geometry_helpers as gh
@@ -257,7 +253,6 @@ class GenerateDhParams(rclpy.node.Node):
             # continue
 
         # Skew case
-        # TODO(lmunier): Add testing for skew case
         else:
             print("- Process skew case.")
             dh_params = self.process_skew_case(origin_xyz, axis)
