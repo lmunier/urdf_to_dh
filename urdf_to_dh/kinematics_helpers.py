@@ -4,9 +4,8 @@
 
 """A module containing helper functions for kinematics calculations."""
 
-
-import numpy as np
 import math
+import numpy as np
 
 
 def x_rotation(theta: float) -> np.ndarray:

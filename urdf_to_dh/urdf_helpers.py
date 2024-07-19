@@ -1,17 +1,21 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# urdf_helpers.py
+
+"""A module containing helper functions URDF parsing."""
+
 import xml.etree.ElementTree as ET
 import numpy as np
 
-# Helper functions for parsing the URDF
 
-
-def get_urdf_root(urdf_file):
+def get_urdf_root(urdf_file: str) -> ET.Element:
     """Parse a URDF for joints.
 
     Args:
-        urdf_path (string): The absolute path to the URDF to be analyzed.
+        urdf_path: The absolute path to the URDF to be analyzed.
 
     Returns:
-        root (xml object): root node of the URDF.
+        root: root node of the URDF.
     """
     try:
         tree = ET.parse(urdf_file)
@@ -21,10 +25,15 @@ def get_urdf_root(urdf_file):
     return tree.getroot()
 
 
-def process_joint(joint):
+def process_joint(joint: ET.Element) -> tuple:
     """Extracts the relevant joint info into a dictionary.
+
     Args:
+        joint: The joint element to be processed.
+
     Returns:
+        joint_name: The name of the joint.
+        joint_info: A dictionary containing the joint info.
     """
     axis = np.array([1, 0, 0])
     xyz = np.zeros(3)

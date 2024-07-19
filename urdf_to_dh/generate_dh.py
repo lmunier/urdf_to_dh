@@ -16,8 +16,6 @@
 
 import rclpy
 import rclpy.node
-# from rclpy.exceptions import ParameterAlreadyDeclaredException
-# from rcl_interfaces.msg import ParameterType
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -34,7 +32,7 @@ from math import atan2, sqrt
 import urdf_to_dh.kinematics_helpers as kh
 import urdf_to_dh.geometry_helpers as gh
 import urdf_to_dh.urdf_helpers as uh
-import urdf_to_dh.maker_helpers as mh
+import urdf_to_dh.marker_helpers as mh
 
 
 class GenerateDhParams(rclpy.node.Node):
@@ -55,7 +53,9 @@ class GenerateDhParams(rclpy.node.Node):
         self.get_logger().info('Initializing...')
 
         self.urdf_file = self.get_parameter(
-            'urdf_file').get_parameter_value().string_value
+            'urdf_file'
+        ).get_parameter_value().string_value
+
         self.get_logger().info('URDF file = %s' % self.urdf_file)
 
     def parse_urdf(self):
@@ -72,8 +72,13 @@ class GenerateDhParams(rclpy.node.Node):
                     'abs_dh_tf': np.eye(4),
                     'dh_found': False
                 }
-                node = AnyNode(id=child.get('name'), parent=None,
-                               children=None, type='link')
+
+                node = AnyNode(
+                    id=child.get('name'),
+                    parent=None,
+                    children=None,
+                    type='link'
+                )
                 self.urdf_tree_nodes.append(node)
 
         # Parse all joints and add to tree
@@ -81,8 +86,12 @@ class GenerateDhParams(rclpy.node.Node):
             if child.tag == 'joint':
                 joint_name, joint_data = uh.process_joint(child)
                 self.urdf_joints[joint_name] = joint_data
-                node = AnyNode(id=joint_name, parent=None,
-                               children=None, type='joint')
+                node = AnyNode(
+                    id=joint_name,
+                    parent=None,
+                    children=None,
+                    type='joint'
+                )
 
                 # Find parent and child link
                 for n in self.urdf_tree_nodes:
@@ -90,6 +99,7 @@ class GenerateDhParams(rclpy.node.Node):
                         node.parent = n
                     if n.id == joint_data['child']:
                         n.parent = node
+
                 self.urdf_tree_nodes.append(node)
 
         # Find root link
@@ -118,6 +128,7 @@ class GenerateDhParams(rclpy.node.Node):
             if n.type == 'link' and n.parent != None:
                 print("\nget tf from ", n.parent.parent.id, " to ", n.id)
                 parent_tf_world = self.urdf_links[n.parent.parent.id]['abs_tf']
+
                 xyz = self.urdf_joints[n.parent.id]['xyz']
                 rpy = self.urdf_joints[n.parent.id]['rpy']
 
@@ -131,29 +142,16 @@ class GenerateDhParams(rclpy.node.Node):
                 abs_tf = np.matmul(parent_tf_world, tf)
                 self.urdf_links[n.id]['abs_tf'] = abs_tf
 
-        # print("Link Info:")
-        # for link_name, link_data in self.urdf_links.items():
-        #     print("\n=====", link_name)
-        #     print("rel_tf")
-        #     print(link_data['rel_tf'])
-        #     print("abs_tf")
-        #     print(link_data['abs_tf'])
-        #     print("dh_tf")
-        #     print(link_data['dh_tf'])
-        #     print("abs_dh_tf")
-        #     print(link_data['abs_dh_tf'])
-
     def calculate_dh_params(self):
         robot_dh_params = []
-        print("calculate_dh_params")
-        # Node process order:
-        print("process_order = \n", [
+        print("Calculate_dh_params")
+        print("Process_order = \n", [
             urdf_node.id for urdf_node in LevelOrderIter(self.root_link)
         ])
 
         for urdf_node in LevelOrderIter(self.root_link):
             if urdf_node.type == 'link' and self.urdf_links[urdf_node.id]['dh_found'] == False:
-                print("\n\nprocess dh params for ", urdf_node.id)
+                print("\n\nProcess dh params for ", urdf_node.id)
 
                 # TF from current link frame to world frame
                 link_to_world = self.urdf_links[urdf_node.id]['abs_tf']
@@ -163,7 +161,8 @@ class GenerateDhParams(rclpy.node.Node):
 
                 # TF from link frame to parent dh frame
                 link_to_parent_dh = np.matmul(
-                    kh.inv_tf(parent_to_world_dh), link_to_world)
+                    kh.inv_tf(parent_to_world_dh), link_to_world
+                )
 
                 # Find DH parameters
                 # Publish Joint axis for visual verification
@@ -189,10 +188,19 @@ class GenerateDhParams(rclpy.node.Node):
                 self.urdf_links[urdf_node.id]['abs_dh_tf'] = abs_dh_matrix
                 self.marker_pub.publish_frame('world', abs_dh_matrix)
                 robot_dh_params.append(
-                    [urdf_node.parent.id, urdf_node.parent.parent.id, urdf_node.id] + list(dh_params.round(5)))
+                    [
+                        urdf_node.parent.id,
+                        urdf_node.parent.parent.id,
+                        urdf_node.id
+                    ] + list(dh_params.round(5))
+                )
 
-        pd_frame = pd.DataFrame(robot_dh_params, columns=[
-                                'joint', 'parent', 'child', 'd', 'theta', 'r', 'alpha'])
+        pd_frame = pd.DataFrame(
+            robot_dh_params,
+            columns=[
+                'joint', 'parent', 'child', 'd', 'theta', 'r', 'alpha'
+            ]
+        )
         pd_frame['theta'] = np.degrees(pd_frame['theta'])
         pd_frame['alpha'] = np.degrees(pd_frame['alpha'])
 
@@ -200,10 +208,12 @@ class GenerateDhParams(rclpy.node.Node):
         save_dir = os.path.join(os.getcwd(), 'src/urdf_to_dh/dh_parameters')
         csv_file_path = os.path.join(save_dir, f"{base_filename}_dh.csv")
         markdown_file_path = os.path.join(save_dir, f"{base_filename}_dh.md")
+
         # Save CSV file.
         print("\nDH Parameters: (csv)")
         pd_frame.to_csv(csv_file_path, index=False)
         print(pd_frame.to_csv())
+
         # Save Markdown file.
         print("\nDH Parameters: (markdown)")
         with open(markdown_file_path, 'w') as file:
@@ -215,20 +225,11 @@ class GenerateDhParams(rclpy.node.Node):
     def get_joint_dh_params_new(self):
         pass
 
-    def get_joint_dh_params(self, rel_link_frame, axis):
+    def get_joint_dh_params(self, rel_link_frame: np.ndarray, axis: np.ndarray):
         dh_params = np.zeros(4)
-
-        # Get the joint axis in the parent frame
-        # for joint_name, joint_data in self.urdf_joints.items():
-        #     print(joint_name)
-        #     parent_tf_to_child_tf = kh.get_extrinsic_rotation(joint_data['rpy'])
-        #     # print(parent_tf_to_child_tf)
-
-        #     axis_in_parent_tf = np.matmul(parent_tf_to_child_tf, joint_data['axis'])
-        #     self.publish_arrow(joint_data['parent'], joint_data['xyz'], axis_in_parent_tf)
-        #     # print(axis_in_parent_tf)
         origin_xyz = rel_link_frame[0:3, 3]
         z_axis = np.array([0, 0, 1])
+
         print(
             f"Get joint DH params\n- Axis : {axis}\n- Relative link frame : {rel_link_frame}"
         )
@@ -236,13 +237,14 @@ class GenerateDhParams(rclpy.node.Node):
         # Collinear case
         if gh.are_collinear(np.zeros(3), z_axis, origin_xyz, axis):
             print("- Process collinear case.")
-            dh_params = self.process_collinear_case(
-                origin_xyz, rel_link_frame[0:3, 0])
+
+            dh_params = self.process_collinear_case(origin_xyz)
             # continue
 
         # Parallel case
         elif gh.are_parallel(z_axis, axis):
             print("- Process parallel case.")
+
             dh_params = self.process_parallel_case(origin_xyz)
             # continue
 
@@ -250,6 +252,7 @@ class GenerateDhParams(rclpy.node.Node):
         elif gh.lines_intersect(np.zeros(3), z_axis, origin_xyz, axis)[0]:
             print("- Process intersection case.")
             print(rel_link_frame)
+
             dh_params = self.process_intersection_case(origin_xyz, axis)
             # continue
 
@@ -259,31 +262,24 @@ class GenerateDhParams(rclpy.node.Node):
             print("- Process skew case.")
             dh_params = self.process_skew_case(origin_xyz, axis)
 
-        # Visualize the "d" component
-        # self.publish_arrow(joint_data['parent'], np.zeros(3), pointA, 0.0, 0.0, 1.0, 0.5)
-
-        # # Visualize the "r" component
-        # self.publish_arrow(joint_data['parent'], pointA, pointB-pointA, 1.0, 0.0, 1.0, 1.0)
-
-        # # Visualize the intersection and alignment with the next joint axis
-        # self.publish_arrow(joint_data['parent'], pointB, joint_data['xyz']-pointB, 0.0, 1.0, 1.0, 0.5)
         print(dh_params)
         return dh_params
 
-    def process_collinear_case(self, origin, xaxis):
+    def process_collinear_case(self, origin: np.ndarray) -> np.ndarray:
         dh_params = np.zeros(4)
         dh_params[0] = origin[2]
-        # dh_params[1] = atan2(xaxis[1], xaxis[0])
+
         return dh_params
 
-    def process_parallel_case(self, origin):
+    def process_parallel_case(self, origin: np.ndarray) -> np.ndarray:
         dh_params = np.zeros(4)
         dh_params[0] = origin[2]
         dh_params[1] = atan2(origin[1], origin[0])
         dh_params[2] = sqrt(origin[0]**2 + origin[1]**2)
+
         return dh_params
 
-    def process_intersection_case(self, origin, axis):
+    def process_intersection_case(self, origin: np.ndarray, axis: np.ndarray) -> np.ndarray:
         dh_params = np.zeros(4)
         dh_params[0] = gh.lines_intersect(
             np.zeros(3), np.array([0, 0, 1]), origin, axis)[1][0]
@@ -299,8 +295,10 @@ class GenerateDhParams(rclpy.node.Node):
         for i in range(0, 3):
             if abs(cn[i]) < 1.e-6:
                 cn[i] = 0
+
         if (cn[0] < 0):
             cn = cn * -1
+
         dh_params[1] = atan2(cn[1], cn[0])
         print(atan2(np.dot(np.cross(xaxis, cn), zaxis), np.dot(xaxis, cn)))
 
@@ -312,7 +310,7 @@ class GenerateDhParams(rclpy.node.Node):
 
         return dh_params
 
-    def process_skew_case(self, origin, direction):
+    def process_skew_case(self, origin: np.ndarray, direction: np.ndarray) -> np.ndarray:
         pointA = np.zeros(3)
         pointB = np.zeros(3)
         dh_params = np.zeros(4)
@@ -341,8 +339,6 @@ class GenerateDhParams(rclpy.node.Node):
         dh_params[3] = atan2(
             np.dot(np.cross(zaxis, direction), vn), np.dot(zaxis, direction))
 
-        # print('points = ', pointA, pointB)
-        # print('dh params = ', dh_params)
         return dh_params
 
 

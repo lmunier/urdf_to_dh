@@ -1,9 +1,15 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# geometry_helpers.py
+
+"""A module containing helper functions for geometry calculations."""
+
 import numpy as np
 
 EPSILON = 1.0e-5
 
 
-def are_parallel(vec1, vec2):
+def are_parallel(vec1: np.ndarray, vec2: np.ndarray) -> bool:
     """Determine if two vectors are parallel."""
     vec1_unit = vec1 / np.linalg.norm(vec1)
     vec2_unit = vec2 / np.linalg.norm(vec2)
@@ -11,7 +17,7 @@ def are_parallel(vec1, vec2):
     return np.all(abs(np.cross(vec1_unit, vec2_unit)) < EPSILON)
 
 
-def are_collinear(point1, vec1, point2, vec2):
+def are_collinear(point1: np.ndarray, vec1: np.ndarray, point2: np.ndarray, vec2: np.ndarray) -> bool:
     """Determine if vectors are collinear."""
 
     # To be collinear, vectors must be parallel
@@ -32,7 +38,7 @@ def are_collinear(point1, vec1, point2, vec2):
     return np.allclose(p2, point2)
 
 
-def lines_intersect(point1, vec1, point2, vec2):
+def lines_intersect(point1: np.ndarray, vec1: np.ndarray, point2: np.ndarray, vec2: np.ndarray) -> tuple:
     """Determine if two lines intersect."""
     epsilon = 1e-6
     x = np.zeros(2)
