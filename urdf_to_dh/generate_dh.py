@@ -1,3 +1,4 @@
+# Copyright 2024 Louis Munier and Durgesh Salunkhe.
 # Copyright 2024 Takumi Asada.
 # Copyright 2020 Andy McEvoy.
 #
@@ -27,7 +28,7 @@ import numpy as np
 import os
 import pandas as pd
 import pprint
-import math
+from math import atan2, sqrt
 
 
 import urdf_to_dh.kinematics_helpers as kh
@@ -143,11 +144,12 @@ class GenerateDhParams(rclpy.node.Node):
         #     print(link_data['abs_dh_tf'])
 
     def calculate_dh_params(self):
+        robot_dh_params = []
         print("calculate_dh_params")
         # Node process order:
         print("process_order = \n", [
-              urdf_node.id for urdf_node in LevelOrderIter(self.root_link)])
-        robot_dh_params = []
+            urdf_node.id for urdf_node in LevelOrderIter(self.root_link)
+        ])
 
         for urdf_node in LevelOrderIter(self.root_link):
             if urdf_node.type == 'link' and self.urdf_links[urdf_node.id]['dh_found'] == False:
@@ -179,20 +181,20 @@ class GenerateDhParams(rclpy.node.Node):
 
                 dh_params = self.get_joint_dh_params(link_to_parent_dh, axis)
 
-                dh_frame = kh.get_dh_frame(dh_params)
-                abs_dh_frame = np.matmul(parent_to_world_dh, dh_frame)
+                dh_matrix = kh.get_dh_matrix(dh_params)
+                abs_dh_matrix = np.matmul(parent_to_world_dh, dh_matrix)
 
-                self.urdf_links[urdf_node.id]['dh_tf'] = dh_frame
+                self.urdf_links[urdf_node.id]['dh_tf'] = dh_matrix
 
-                self.urdf_links[urdf_node.id]['abs_dh_tf'] = abs_dh_frame
-                self.marker_pub.publish_frame('world', abs_dh_frame)
+                self.urdf_links[urdf_node.id]['abs_dh_tf'] = abs_dh_matrix
+                self.marker_pub.publish_frame('world', abs_dh_matrix)
                 robot_dh_params.append(
                     [urdf_node.parent.id, urdf_node.parent.parent.id, urdf_node.id] + list(dh_params.round(5)))
 
         pd_frame = pd.DataFrame(robot_dh_params, columns=[
                                 'joint', 'parent', 'child', 'd', 'theta', 'r', 'alpha'])
-        pd_frame['theta'] = pd_frame['theta'] * 180.0 / math.pi
-        pd_frame['alpha'] = pd_frame['alpha'] * 180.0 / math.pi
+        pd_frame['theta'] = np.degrees(pd_frame['theta'])
+        pd_frame['alpha'] = np.degrees(pd_frame['alpha'])
 
         base_filename = os.path.splitext(os.path.basename(self.urdf_file))[0]
         save_dir = os.path.join(os.getcwd(), 'src/urdf_to_dh/dh_parameters')
@@ -206,9 +208,13 @@ class GenerateDhParams(rclpy.node.Node):
         print("\nDH Parameters: (markdown)")
         with open(markdown_file_path, 'w') as file:
             file.write(pd_frame.to_markdown(index=False))
+
         print(pd_frame.to_markdown())
 
     # TODO(lmunier) move into caseless implementation using transform matrices
+    def get_joint_dh_params_new(self):
+        pass
+
     def get_joint_dh_params(self, rel_link_frame, axis):
         dh_params = np.zeros(4)
 
@@ -267,14 +273,14 @@ class GenerateDhParams(rclpy.node.Node):
     def process_collinear_case(self, origin, xaxis):
         dh_params = np.zeros(4)
         dh_params[0] = origin[2]
-        # dh_params[1] = math.atan2(xaxis[1], xaxis[0])
+        # dh_params[1] = atan2(xaxis[1], xaxis[0])
         return dh_params
 
     def process_parallel_case(self, origin):
         dh_params = np.zeros(4)
         dh_params[0] = origin[2]
-        dh_params[1] = math.atan2(origin[1], origin[0])
-        dh_params[2] = math.sqrt(origin[0]**2 + origin[1]**2)
+        dh_params[1] = atan2(origin[1], origin[0])
+        dh_params[2] = sqrt(origin[0]**2 + origin[1]**2)
         return dh_params
 
     def process_intersection_case(self, origin, axis):
@@ -295,13 +301,13 @@ class GenerateDhParams(rclpy.node.Node):
                 cn[i] = 0
         if (cn[0] < 0):
             cn = cn * -1
-        dh_params[1] = math.atan2(cn[1], cn[0])
-        print(math.atan2(np.dot(np.cross(xaxis, cn), zaxis), np.dot(xaxis, cn)))
+        dh_params[1] = atan2(cn[1], cn[0])
+        print(atan2(np.dot(np.cross(xaxis, cn), zaxis), np.dot(xaxis, cn)))
 
         dh_params[2] = 0
 
         vn = cn / np.linalg.norm(cn)
-        dh_params[3] = math.atan2(
+        dh_params[3] = atan2(
             np.dot(np.cross(zaxis, axis), vn), np.dot(zaxis, axis))
 
         return dh_params
@@ -324,7 +330,7 @@ class GenerateDhParams(rclpy.node.Node):
         dh_params[2] = np.linalg.norm(pointB - pointA)
 
         # 'theta' is the angle between the x-axis and the common normal
-        dh_params[1] = math.atan2(pointB[1], pointB[0])
+        dh_params[1] = atan2(pointB[1], pointB[0])
 
         # 'alpha' is the angle between the current z-axis and the joint axis
         # Awesome way to get signed angle:
@@ -332,7 +338,7 @@ class GenerateDhParams(rclpy.node.Node):
         cn = pointB - pointA
         vn = cn / np.linalg.norm(cn)
         zaxis = np.array([0, 0, 1])
-        dh_params[3] = math.atan2(
+        dh_params[3] = atan2(
             np.dot(np.cross(zaxis, direction), vn), np.dot(zaxis, direction))
 
         # print('points = ', pointA, pointB)
@@ -350,7 +356,7 @@ def main():
     node.calculate_dh_params()
 
     try:
-        rclpy.spin(node)
+        rclpy.spinOnce(node)
     except:
         pass
 
