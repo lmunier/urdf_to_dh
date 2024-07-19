@@ -36,6 +36,7 @@ class GenerateDhParams(rclpy.node.Node):
     def __init__(self):
         super().__init__('generate_dh_param_node')
 
+        self.get_logger().info('Initializing...')
         self.declare_parameter('urdf_file')
         self.urdf_joints = {}
         self.urdf_links = {}
@@ -45,9 +46,6 @@ class GenerateDhParams(rclpy.node.Node):
         self.verbose = False
         self.marker_pub = mh.MarkerPublisher()
 
-    def InitializeDhNode(self):
-        self.get_logger().info('Initializing...')
-
         self.urdf_file = self.get_parameter(
             'urdf_file'
         ).get_parameter_value().string_value
@@ -55,6 +53,7 @@ class GenerateDhParams(rclpy.node.Node):
         self.get_logger().info('URDF file = %s' % self.urdf_file)
 
     def parse_urdf(self):
+        """ Parse the URDF file and create a tree structure. """
         # Get the root of the URDF and extract all of the joints
         urdf_root = uh.get_urdf_root(self.urdf_file)
 
@@ -69,20 +68,21 @@ class GenerateDhParams(rclpy.node.Node):
                     'dh_found': False
                 }
 
-                node = AnyNode(
+                link_node = AnyNode(
                     id=child.get('name'),
                     parent=None,
                     children=None,
                     type='link'
                 )
-                self.urdf_tree_nodes.append(node)
+                self.urdf_tree_nodes.append(link_node)
 
         # Parse all joints and add to tree
         for child in urdf_root:
             if child.tag == 'joint':
                 joint_name, joint_data = uh.process_joint(child)
                 self.urdf_joints[joint_name] = joint_data
-                node = AnyNode(
+
+                joint_node = AnyNode(
                     id=joint_name,
                     parent=None,
                     children=None,
@@ -92,11 +92,11 @@ class GenerateDhParams(rclpy.node.Node):
                 # Find parent and child link
                 for n in self.urdf_tree_nodes:
                     if n.id == joint_data['parent']:
-                        node.parent = n
+                        joint_node.parent = n
                     if n.id == joint_data['child']:
-                        n.parent = node
+                        n.parent = joint_node
 
-                self.urdf_tree_nodes.append(node)
+                self.urdf_tree_nodes.append(joint_node)
 
         # Find root link
         num_nodes_no_parent = 0
@@ -109,51 +109,58 @@ class GenerateDhParams(rclpy.node.Node):
             # Root link DH will be identity, set dh_found = True
             # TODO: Probably not needed since order iter is used
             self.urdf_links[self.root_link.id]['dh_found'] = True
+
             print("URDF Tree:")
-            for pre, _, node in RenderTree(self.root_link):
-                print('%s%s' % (pre, node.id))
+            for pre, _, n in RenderTree(self.root_link):
+                print(f"{pre}{n.id}")
 
             print("Joint Info:")
             pprint.pprint(self.urdf_joints)
         else:
             print("Error: Should only be one root link")
 
-    def calculate_tfs_in_world_frame(self):
+    def calculate_tfs(self):
+        """ Calculate the transformation matrices for each link in both the local and the world frame. """
         print("Calculate world tfs:")
         for n in LevelOrderIter(self.root_link):
             if n.type == 'link' and n.parent != None:
-                print("\nget tf from ", n.parent.parent.id, " to ", n.id)
+                print(f"- Get tf from {n.parent.parent.id} to {n.id}")
                 parent_tf_world = self.urdf_links[n.parent.parent.id]['abs_tf']
 
                 xyz = self.urdf_joints[n.parent.id]['xyz']
                 rpy = self.urdf_joints[n.parent.id]['rpy']
 
+                # Compute relative tf
                 tf = np.eye(4)
                 tf[0:3, 0:3] = kh.get_extrinsic_rotation(rpy)
                 tf[0:3, 3] = xyz
-
                 self.urdf_links[n.id]['rel_tf'] = tf
 
+                # Compute absolute tf in world frame
                 abs_tf = np.eye(4)
                 abs_tf = np.matmul(parent_tf_world, tf)
                 self.urdf_links[n.id]['abs_tf'] = abs_tf
 
     def calculate_dh_params(self):
+        """ Calculate the DH parameters for each joint. """
         robot_dh_params = []
-        print("Calculate_dh_params")
+        robot_dh_params_new = []
+        print("\nCalculate_dh_params")
         print("Process_order = \n", [
             urdf_node.id for urdf_node in LevelOrderIter(self.root_link)
         ])
 
         for urdf_node in LevelOrderIter(self.root_link):
             if urdf_node.type == 'link' and self.urdf_links[urdf_node.id]['dh_found'] == False:
-                print("\n\nProcess dh params for ", urdf_node.id)
+                print(f"\n\nProcess dh params for {urdf_node.id}")
 
                 # TF from current link frame to world frame
                 link_to_world = self.urdf_links[urdf_node.id]['abs_tf']
 
                 # DH frame from parent link frame to world frame
                 parent_to_world_dh = self.urdf_links[urdf_node.parent.parent.id]['abs_dh_tf']
+                print("=============TEST==============")
+                print(f"World id {urdf_node.parent.parent.id}")
 
                 # TF from link frame to parent dh frame
                 link_to_parent_dh = np.matmul(
@@ -180,15 +187,27 @@ class GenerateDhParams(rclpy.node.Node):
                 abs_dh_matrix = np.matmul(parent_to_world_dh, dh_matrix)
 
                 self.urdf_links[urdf_node.id]['dh_tf'] = dh_matrix
-
                 self.urdf_links[urdf_node.id]['abs_dh_tf'] = abs_dh_matrix
                 self.marker_pub.publish_frame('world', abs_dh_matrix)
+
                 robot_dh_params.append(
                     [
                         urdf_node.parent.id,
                         urdf_node.parent.parent.id,
                         urdf_node.id
                     ] + list(dh_params.round(5))
+                )
+
+                # New computation method
+                dh_params_new = self.get_joint_dh_params_new(
+                    self.urdf_links[urdf_node.id]['rel_tf']
+                )
+                robot_dh_params_new.append(
+                    [
+                        urdf_node.parent.id,
+                        urdf_node.parent.parent.id,
+                        urdf_node.id
+                    ] + list(dh_params_new.round(5))
                 )
 
         pd_frame = pd.DataFrame(
@@ -199,6 +218,15 @@ class GenerateDhParams(rclpy.node.Node):
         )
         pd_frame['theta'] = np.degrees(pd_frame['theta'])
         pd_frame['alpha'] = np.degrees(pd_frame['alpha'])
+
+        pd_frame_new = pd.DataFrame(
+            robot_dh_params_new,
+            columns=[
+                'joint', 'parent', 'child', 'd', 'theta', 'r', 'alpha'
+            ]
+        )
+        pd_frame_new['theta'] = np.degrees(pd_frame_new['theta'])
+        pd_frame_new['alpha'] = np.degrees(pd_frame_new['alpha'])
 
         base_filename = os.path.splitext(os.path.basename(self.urdf_file))[0]
         save_dir = os.path.join(os.getcwd(), 'src/urdf_to_dh/dh_parameters')
@@ -217,9 +245,35 @@ class GenerateDhParams(rclpy.node.Node):
 
         print(pd_frame.to_markdown())
 
+        print("\nDH Parameters New method: (markdown)")
+        print(pd_frame_new.to_markdown())
+
     # TODO(lmunier) move into caseless implementation using transform matrices
-    def get_joint_dh_params_new(self):
-        pass
+    def get_joint_dh_params_new(self, rel_link_frame: np.ndarray):
+        dh_params = np.zeros(4)
+
+        # 'd'
+        dh_params[0] = rel_link_frame[2, 3]
+
+        # 'theta'
+        dh_params[1] = atan2(rel_link_frame[1, 0], rel_link_frame[0, 0])
+
+        # 'r'
+        dh_params[2] = sqrt(rel_link_frame[0, 3]**2 + rel_link_frame[1, 3]**2)
+        print(
+            "==============================================================================")
+        print(
+            f"Sign of r: {rel_link_frame[0, 3]}, {rel_link_frame[1, 3]}"
+        )
+
+        print(rel_link_frame)
+
+        # 'alpha'
+        dh_params[3] = atan2(rel_link_frame[2, 1], rel_link_frame[2, 2])
+
+        print(dh_params)
+
+        return dh_params
 
     def get_joint_dh_params(self, rel_link_frame: np.ndarray, axis: np.ndarray):
         dh_params = np.zeros(4)
@@ -306,29 +360,29 @@ class GenerateDhParams(rclpy.node.Node):
         return dh_params
 
     def process_skew_case(self, origin: np.ndarray, direction: np.ndarray) -> np.ndarray:
-        pointA = np.zeros(3)
-        pointB = np.zeros(3)
+        point_a = np.zeros(3)
+        point_b = np.zeros(3)
         dh_params = np.zeros(4)
 
         # Find closest points along parent z-axis (pointA) and joint axis (pointB)
         t = -1.0 * (origin[0] * direction[0] + origin[1] *
                     direction[1]) / (direction[0]**2 + direction[1]**2)
-        pointB = origin + t * direction
-        pointA[2] = pointB[2]
+        point_b = origin + t * direction
+        point_a[2] = point_b[2]
 
         # 'd' is offset along parent z axis
-        dh_params[0] = pointA[2]
+        dh_params[0] = point_a[2]
 
         # 'r' is the length of the common normal
-        dh_params[2] = np.linalg.norm(pointB - pointA)
+        dh_params[2] = np.linalg.norm(point_b - point_a)
 
         # 'theta' is the angle between the x-axis and the common normal
-        dh_params[1] = atan2(pointB[1], pointB[0])
+        dh_params[1] = atan2(point_b[1], point_b[0])
 
         # 'alpha' is the angle between the current z-axis and the joint axis
         # Awesome way to get signed angle:
         # https://stackoverflow.com/questions/5188561/signed-angle-between-two-3d-vectors-with-same-origin-within-the-same-plane/33920320#33920320
-        cn = pointB - pointA
+        cn = point_b - point_a
         vn = cn / np.linalg.norm(cn)
         zaxis = np.array([0, 0, 1])
         dh_params[3] = atan2(
@@ -341,13 +395,12 @@ def main():
     print('Starting GenerateDhParams Node...')
     rclpy.init()
     node = GenerateDhParams()
-    node.InitializeDhNode()
     node.parse_urdf()
-    node.calculate_tfs_in_world_frame()
+    node.calculate_tfs()
     node.calculate_dh_params()
 
     try:
-        rclpy.spinOnce(node)
+        rclpy.spin(node)
     except:
         pass
 
