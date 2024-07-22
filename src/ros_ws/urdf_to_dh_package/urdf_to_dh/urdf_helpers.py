@@ -35,7 +35,7 @@ def process_joint(joint: ET.Element) -> tuple:
         joint_name: The name of the joint.
         joint_info: A dictionary containing the joint info.
     """
-    axis = np.array([1, 0, 0])
+    axis = np.array([0, 0, 1])
     xyz = np.zeros(3)
     rpy = np.zeros(3)
     parent_link = ''
@@ -54,4 +54,5 @@ def process_joint(joint: ET.Element) -> tuple:
         elif child.tag == 'child':
             child_link = child.get('link')
 
-    return joint_name, {'axis': axis, 'xyz': xyz, 'rpy': rpy, 'parent': parent_link, 'child': child_link, 'dh': np.zeros(4)}
+    return joint_name, {'axis': axis, 'xyz': xyz, 'rpy': rpy, 'parent': parent_link, 'child': child_link,
+                        'dh': np.zeros(4), 'type': joint.get('type')}
