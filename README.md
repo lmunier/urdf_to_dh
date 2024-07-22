@@ -10,7 +10,9 @@ Check out the [documentation](https://mcevoyandy.github.io/urdf_to_dh/index.html
 
 ## Getting started
 
-To run the code without any ROS2 installation on the host computer, use [docker](https://docs.docker.com/engine/install/ubuntu/) along with [docker compose](https://docs.docker.com/compose/install/linux/).
+To run the code without any ROS2 installation on the host computer, use [docker](https://docs.docker.com/engine/install/ubuntu/), perform the post-installation process if you want to run docker without having to use root access. Also install [docker compose](https://docs.docker.com/compose/install/linux/).
+
+To be able to run GUI Windows from docker container, install [nvidia container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
 Then, in the root folder, run the following:
 
