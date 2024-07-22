@@ -8,6 +8,7 @@ __pycache__/
 src/ros_ws/build/*
 src/ros_ws/install/*
 src/ros_ws/log/*
+src/ros_ws/temp/*
 
 # C extensions
 *.so
