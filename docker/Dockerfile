@@ -29,8 +29,13 @@ RUN apt update --fix-missing && apt upgrade -y && apt clean
 RUN apt install -y \
     git \
     python3 \
-    python3-pip \
-    ros-${ROS_DISTRO}-joint-state-publisher-gui
+    python3-pip
+
+# Install ROS packages dependencies
+RUN apt update --fix-missing && apt upgrade -y && apt clean
+RUN apt install -y \
+    ros-${ROS_DISTRO}-joint-state-publisher-gui \
+    ros-${ROS_DISTRO}-xacro
 
 # Install urdf_to_dh parameters dependencies
 RUN pip3 install --upgrade pip
