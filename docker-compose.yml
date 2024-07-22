@@ -1,7 +1,7 @@
 services:
   ros2:
     user: ${ROS_USER}
-    env_file: .project_env
+    env_file: .env
     network_mode: host
     build:
       context: ./docker
