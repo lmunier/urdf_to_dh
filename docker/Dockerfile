@@ -34,11 +34,13 @@ RUN apt install -y \
 
 # Install urdf_to_dh parameters dependencies
 RUN pip3 install --upgrade pip
-RUN pip3 install \
+RUN pip3 install --upgrade \
     pandas \
     anytree \
-    tabulate
+    tabulate \
+    scipy
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc
 
+WORKDIR ${HOME}/ros_ws
 CMD [ "bash" ]

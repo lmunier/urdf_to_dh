@@ -39,6 +39,7 @@ class GenerateDhParams(rclpy.node.Node):
 
         self.get_logger().info('Initializing...')
         self.declare_parameter('urdf_file')
+
         self.urdf_joints = {}
         self.urdf_links = {}
         self.urdf_file = ''
@@ -252,7 +253,9 @@ class GenerateDhParams(rclpy.node.Node):
         pd_frame_new['alpha'] = np.degrees(pd_frame_new['alpha'])
 
         base_filename = os.path.splitext(os.path.basename(self.urdf_file))[0]
-        save_dir = os.path.join(os.getcwd(), 'src/urdf_to_dh/dh_parameters')
+        save_dir = os.path.join(
+            os.getcwd(), 'urdf_to_dh_package/dh_parameters'
+        )
         csv_file_path = os.path.join(save_dir, f"{base_filename}_dh.csv")
         markdown_file_path = os.path.join(save_dir, f"{base_filename}_dh.md")
 

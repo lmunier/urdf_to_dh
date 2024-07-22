@@ -9,6 +9,7 @@ src/ros_ws/build/*
 src/ros_ws/install/*
 src/ros_ws/log/*
 src/ros_ws/temp/*
+src/ros_ws/urdf_to_dh_package/dh_parameters/*
 
 # C extensions
 *.so
