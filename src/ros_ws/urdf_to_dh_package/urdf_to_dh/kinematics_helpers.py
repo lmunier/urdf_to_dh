@@ -56,6 +56,21 @@ def z_rotation(theta: float) -> np.ndarray:
     ])
 
 
+def normalize(axis: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
+    """Normalize a vector.
+
+    Args:
+        axis: A numpy array representing the vector to normalize.
+
+    Returns:
+        A numpy array representing the normalized vector.
+    """
+    if abs(np.linalg.norm(axis) - 1) < epsilon or np.linalg.norm(axis) == 0:
+        return axis
+    else:
+        return axis / np.linalg.norm(np.array(axis))
+
+
 def get_extrinsic_rotation(rpy: np.ndarray) -> np.ndarray:
     """Gets the extrinsic rotation matrix defined by roll about x, then pitch about y, then yaw
     about z. This is the rotation matrix used in URDF.

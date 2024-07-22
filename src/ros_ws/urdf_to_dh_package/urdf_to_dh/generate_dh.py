@@ -33,6 +33,9 @@ import urdf_to_dh.marker_helpers as mh
 from urdf_to_dh.math_basics import *
 
 
+EPSILON = 1e-6  # Tolerance for floating point comparisons
+
+
 class GenerateDhParams(rclpy.node.Node):
 
     def __init__(self):
@@ -43,11 +46,9 @@ class GenerateDhParams(rclpy.node.Node):
 
         self.urdf_joints = {}
         self.urdf_links = {}
-        self.urdf_file = ''
         self.urdf_tree_nodes = []
+        self.dh_params = {}
         self.root_link = None
-        self.verbose = False
-        self.marker_pub = mh.MarkerPublisher()
 
         self.urdf_file = self.get_parameter(
             'urdf_file'
@@ -65,9 +66,6 @@ class GenerateDhParams(rclpy.node.Node):
             if child.tag == 'link':
                 self.urdf_links[child.get('name')] = {
                     'rel_tf': np.eye(4),
-                    'abs_tf': np.eye(4),
-                    'dh_tf': np.eye(4),
-                    'abs_dh_tf': np.eye(4),
                     'dh_found': False
                 }
 
@@ -128,7 +126,6 @@ class GenerateDhParams(rclpy.node.Node):
         for n in LevelOrderIter(self.root_link):
             if n.type == 'link' and n.parent is not None:
                 print(f"- Get tf from {n.parent.parent.id} to {n.id}")
-                parent_tf_world = self.urdf_links[n.parent.parent.id]['abs_tf']
 
                 xyz = self.urdf_joints[n.parent.id]['xyz']
                 rpy = self.urdf_joints[n.parent.id]['rpy']
@@ -136,115 +133,69 @@ class GenerateDhParams(rclpy.node.Node):
                 # Compute relative tf
                 tf = np.eye(4)
                 tf[0:3, 0:3] = kh.get_extrinsic_rotation(rpy)
-
                 tf[0:3, 3] = xyz
+                self.urdf_links[n.id]['rel_tf'] = tf
 
-                rot_matrix = np.eye(4)
-                joint_axis = normalize(self.urdf_joints[n.parent.id]['axis'])
+    def compute_dh_params(self):
+        for n in LevelOrderIter(self.root_link):
+            if n.type == 'link' and n.parent is not None:
+                # Condition to not compute DH params that are already known
+                if self.urdf_links[n.id]['dh_found']:
+                    continue
+
+                joint_axis = kh.normalize(
+                    self.urdf_joints[n.parent.id]['axis']
+                )
+
                 try:
-                    print(f"type of joint is {self.urdf_joints[n.parent.parent.parent.id]['type']}")
-                    if self.urdf_joints[n.parent.parent.parent.id]['type'] == "fixed":
+                    if self.urdf_joints[n.parent.parent.parent.id]['type'] in ["fixed", None]:
                         parent_joint_axis = joint_axis
                     else:
-                        parent_joint_axis = normalize(self.urdf_joints[n.parent.parent.parent.id]['axis'])
+                        parent_joint_axis = kh.normalize(
+                            self.urdf_joints[n.parent.parent.parent.id]['axis']
+                        )
                 except:
                     parent_joint_axis = joint_axis
 
-                # get common normal
-                print(f"Joint name is {n.parent.id}")
-                print(f"relative frame is {tf}")
-                joint_axis_in_parent = normalize(tf[0:3, 0:3] @ joint_axis)
-                common_normal = normalize(np.cross(joint_axis_in_parent, parent_joint_axis))
+                # Get common normal
+                tf = self.urdf_links[n.id]['rel_tf']
+                joint_axis_in_parent = kh.normalize(tf[0:3, 0:3] @ joint_axis)
+                common_normal = kh.normalize(
+                    np.cross(joint_axis_in_parent, parent_joint_axis)
+                )
+
+                # DH parameters
+                alpha_val = np.arccos(
+                    np.dot(parent_joint_axis, joint_axis_in_parent)
+                )
+
                 d_val = np.dot(tf[0:3, 3], parent_joint_axis)
-                alpha_val = np.arccos(np.dot(parent_joint_axis, joint_axis_in_parent))
-                if (alpha_val == 0 or abs(alpha_val - np.pi) < 1e-5) and abs(d_val) < 1e-5:
-                    a_val = np.linalg.norm(tf[0:3, 3])
+
+                a_val = 0
+                if abs(alpha_val) < EPSILON or abs(alpha_val) - np.pi < EPSILON:
+                    a_val = np.sqrt(np.linalg.norm(tf[0:3, 3])**2 - d_val**2)
+                    print(f"{n.id} a_val: {a_val}")  # TODO(lmunier) solve sign
                 else:
                     a_val = np.dot(tf[0:3, 3], common_normal)
 
-                print(f"parent_axis: {parent_joint_axis}, joint_axis; {joint_axis}, \n"
-                      f"joint_axis_in_parent: {joint_axis_in_parent}")
-                print(f"d: {d_val}, a: {a_val}, alpha: {alpha_val}")
+                self.urdf_links[n.id]['dh_found'] = True
+                self.dh_params[n.id] = [d_val, 0, a_val, alpha_val]
 
-                self.urdf_links[n.id]['rel_tf'] = get_single_transformation(0, d_val, a_val, alpha_val)
-
-                # Compute absolute tf in world frame
-                abs_tf = np.eye(4)
-                abs_tf = np.matmul(parent_tf_world, tf)
-                self.urdf_links[n.id]['abs_tf'] = abs_tf
-
-    def calculate_dh_params(self):
+    def display_dh_params(self):
         """ Calculate the DH parameters for each joint. """
         robot_dh_params = []
-        robot_dh_params_new = []
-        print("\nCalculate_dh_params")
-
-        process_order = [
-            urdf_node.id for urdf_node in LevelOrderIter(self.root_link)
-        ]
-        print(f"Process_order = {process_order}")
 
         for urdf_node in LevelOrderIter(self.root_link):
-            if urdf_node.type == 'link' and self.urdf_links[urdf_node.id]['dh_found'] == False:
-                print(f"\n\nProcess dh params for {urdf_node.id}")
-
-                # TF from current link frame to world frame
-                link_to_world = self.urdf_links[urdf_node.id]['abs_tf']
-
-                # DH frame from parent link frame to world frame
-                parent_to_world_dh = self.urdf_links[urdf_node.parent.parent.id]['abs_dh_tf']
-                print("=============TEST==============")
-                print(f"World id {urdf_node.parent.parent.id}")
-
-                # TF from link frame to parent dh frame
-                link_to_parent_dh = np.matmul(
-                    kh.inv_tf(parent_to_world_dh), link_to_world
-                )
-
-                # Find DH parameters
-                # Publish Joint axis for visual verification
-                self.marker_pub.publish_arrow(
-                    urdf_node.id,
-                    np.zeros(3),
-                    self.urdf_joints[urdf_node.parent.id]['axis'],
-                    [1.0, 0.0, 1.0, 0.2]
-                )
-
-                axis = np.matmul(
-                    link_to_parent_dh[0:3, 0:3],
-                    self.urdf_joints[urdf_node.parent.id]['axis']
-                )
-
-                dh_params = self.get_joint_dh_params(link_to_parent_dh, axis)
-                self.urdf_links[self.root_link.id]['dh_found'] = True
-
-                dh_matrix = kh.get_dh_matrix(dh_params)
-                abs_dh_matrix = np.matmul(parent_to_world_dh, dh_matrix)
-
-                self.urdf_links[urdf_node.id]['dh_tf'] = dh_matrix
-                self.urdf_links[urdf_node.id]['abs_dh_tf'] = abs_dh_matrix
-                self.marker_pub.publish_frame('world', abs_dh_matrix)
-
+            if urdf_node.type == 'link' and urdf_node.parent is not None:
                 robot_dh_params.append(
                     [
                         urdf_node.parent.id,
                         urdf_node.parent.parent.id,
                         urdf_node.id
-                    ] + list(dh_params.round(5))
+                    ] + self.dh_params[urdf_node.id]
                 )
 
-                # New computation method
-                dh_params_new = self.get_joint_dh_params_new(
-                    self.urdf_links[urdf_node.id]['rel_tf']
-                )
-                robot_dh_params_new.append(
-                    [
-                        urdf_node.parent.id,
-                        urdf_node.parent.parent.id,
-                        urdf_node.id
-                    ] + list(dh_params_new.round(5))
-                )
-
+        print(robot_dh_params)
         pd_frame = pd.DataFrame(
             robot_dh_params,
             columns=[
@@ -253,15 +204,6 @@ class GenerateDhParams(rclpy.node.Node):
         )
         pd_frame['theta'] = np.degrees(pd_frame['theta'])
         pd_frame['alpha'] = np.degrees(pd_frame['alpha'])
-
-        pd_frame_new = pd.DataFrame(
-            robot_dh_params_new,
-            columns=[
-                'joint', 'parent', 'child', 'd', 'theta', 'r', 'alpha'
-            ]
-        )
-        pd_frame_new['theta'] = np.degrees(pd_frame_new['theta'])
-        pd_frame_new['alpha'] = np.degrees(pd_frame_new['alpha'])
 
         base_filename = os.path.splitext(os.path.basename(self.urdf_file))[0]
         save_dir = os.path.join(
@@ -282,175 +224,6 @@ class GenerateDhParams(rclpy.node.Node):
 
         print(pd_frame.to_markdown())
 
-        print("\nDH Parameters New method: (markdown)")
-        print(pd_frame_new.to_markdown())
-
-    def align_to_z_axis(self, joint_axis: np.ndarray, parent_joint_axis: np.ndarray, required_dim: int) -> np.ndarray:
-        """Align the joint axis to the z-axis.
-
-        Args:
-            joint_axis: The joint axis to align.
-            parent_joint_axis: The parent joint axis to align.
-            required_dim: The required dimension of the rotation matrix.
-
-        Returns:
-            The rotation matrix to align the joint axis to the z-axis.
-        """
-        rot_matrix = np.eye(required_dim)
-
-        rot_axis = np.cross(joint_axis, parent_joint_axis)
-        angle = np.arccos(np.dot(
-            joint_axis, parent_joint_axis
-        ))
-
-        print(f"Rot axis = {rot_axis}, Angle = {angle}")
-        rot_matrix[0:3, 0:3] = R.from_rotvec(angle * rot_axis).as_matrix()
-
-        return rot_matrix
-
-    # TODO(lmunier) move into caseless implementation using transform matrices
-    def get_joint_dh_params_new(self, rel_link_frame: np.ndarray):
-        dh_params = np.zeros(4)
-
-        # 'd'
-        dh_params[0] = rel_link_frame[2, 3]
-
-        # 'theta'
-        dh_params[1] = atan2(rel_link_frame[1, 0], rel_link_frame[0, 0])
-
-        # 'r'
-        dh_params[2] = sqrt(rel_link_frame[0, 3]**2 + rel_link_frame[1, 3]**2)
-
-        # Check for the sign of r
-        if rel_link_frame[0, 0] != 0 and rel_link_frame[0, 0] * rel_link_frame[0, 3] < 0:
-            dh_params[2] = -dh_params[2]
-        elif rel_link_frame[1, 0] != 0 and rel_link_frame[1, 0] * rel_link_frame[1, 3] < 0:
-            dh_params[2] = -dh_params[2]
-
-        print(rel_link_frame)
-
-        # 'alpha'
-        dh_params[3] = atan2(rel_link_frame[2, 1], rel_link_frame[2, 2])
-
-        print(dh_params)
-
-        return dh_params
-
-    def get_joint_dh_params(self, rel_link_frame: np.ndarray, axis: np.ndarray):
-        dh_params = np.zeros(4)
-        origin_xyz = rel_link_frame[0:3, 3]
-        z_axis = np.array([0, 0, 1])
-
-        print(
-            f"Get joint DH params\n- Axis : {axis}\n- Relative link frame :\n {rel_link_frame}"
-        )
-
-        # Collinear case
-        if gh.are_collinear(np.zeros(3), z_axis, origin_xyz, axis):
-            print("- Process collinear case.")
-
-            dh_params = self.process_collinear_case(origin_xyz)
-            # continue
-
-        # Parallel case
-        elif gh.are_parallel(z_axis, axis):
-            print("- Process parallel case.")
-
-            dh_params = self.process_parallel_case(origin_xyz)
-            # continue
-
-        # Intersect case
-        elif gh.are_intersecting(np.zeros(3), z_axis, origin_xyz, axis):
-            print("- Process intersection case.")
-
-            dh_params = self.process_intersection_case(origin_xyz, axis)
-            # continue
-
-        # Skew case
-        else:
-            print("- Process skew case.")
-            dh_params = self.process_skew_case(origin_xyz, axis)
-
-        print(dh_params)
-        return dh_params
-
-    def process_collinear_case(self, origin: np.ndarray) -> np.ndarray:
-        dh_params = np.zeros(4)
-        dh_params[0] = origin[2]
-
-        return dh_params
-
-    def process_parallel_case(self, origin: np.ndarray) -> np.ndarray:
-        dh_params = np.zeros(4)
-        dh_params[0] = origin[2]
-        dh_params[1] = atan2(origin[1], origin[0])
-        dh_params[2] = sqrt(origin[0]**2 + origin[1]**2)
-
-        return dh_params
-
-    def process_intersection_case(self, origin: np.ndarray, axis: np.ndarray) -> np.ndarray:
-        dh_params = np.zeros(4)
-        dh_params[0] = gh.lines_intersect(
-            np.zeros(3), np.array([0, 0, 1]), origin, axis
-        )[0]
-
-        zaxis = np.array([0., 0., 1.])
-        xaxis = np.array([1., 0., 0.])
-
-        for i in range(0, 3):
-            if abs(axis[i]) < 1.e-5:
-                axis[i] = 0
-
-        cn = np.cross(zaxis, axis)
-        for i in range(0, 3):
-            if abs(cn[i]) < 1.e-6:
-                cn[i] = 0
-
-        if (cn[0] < 0):
-            cn = cn * -1
-
-        dh_params[1] = atan2(cn[1], cn[0])
-        print(atan2(np.dot(np.cross(xaxis, cn), zaxis), np.dot(xaxis, cn)))
-
-        dh_params[2] = 0
-
-        vn = cn / np.linalg.norm(cn)
-        dh_params[3] = atan2(
-            np.dot(np.cross(zaxis, axis), vn), np.dot(zaxis, axis))
-
-        return dh_params
-
-    def process_skew_case(self, origin: np.ndarray, direction: np.ndarray) -> np.ndarray:
-        point_a = np.zeros(3)
-        point_b = np.zeros(3)
-        dh_params = np.zeros(4)
-
-        # Find closest points along parent z-axis (pointA) and joint axis (pointB)
-        t = -1.0 * (origin[0] * direction[0] + origin[1] *
-                    direction[1]) / (direction[0]**2 + direction[1]**2)
-        point_b = origin + t * direction
-        point_a[2] = point_b[2]
-
-        # 'd' is offset along parent z axis
-        dh_params[0] = point_a[2]
-
-        # 'r' is the length of the common normal
-        dh_params[2] = np.linalg.norm(point_b - point_a)
-
-        # 'theta' is the angle between the x-axis and the common normal
-        dh_params[1] = atan2(point_b[1], point_b[0])
-
-        # 'alpha' is the angle between the current z-axis and the joint axis
-        # Awesome way to get signed angle:
-        # https://stackoverflow.com/questions/5188561/signed-angle-between-two-3d-vectors-with-same-origin-within-the-same-plane/33920320#33920320
-        cn = point_b - point_a
-        vn = cn / np.linalg.norm(cn)
-        zaxis = np.array([0, 0, 1])
-        dh_params[3] = atan2(
-            np.dot(np.cross(zaxis, direction), vn), np.dot(zaxis, direction))
-
-        return dh_params
-
 
 def main():
     print('Starting GenerateDhParams Node...')
@@ -458,7 +231,8 @@ def main():
     node = GenerateDhParams()
     node.parse_urdf()
     node.calculate_tfs()
-    node.calculate_dh_params()
+    node.compute_dh_params()
+    node.display_dh_params()
 
     try:
         rclpy.spinOnce(node)
