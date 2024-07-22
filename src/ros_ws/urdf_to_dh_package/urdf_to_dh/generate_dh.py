@@ -23,6 +23,7 @@ import pprint
 import xml.etree.ElementTree as ET
 
 from anytree import AnyNode, LevelOrderIter, RenderTree
+from scipy.spatial.transform import Rotation as R
 from math import atan2, sqrt
 
 import urdf_to_dh.kinematics_helpers as kh
@@ -121,6 +122,7 @@ class GenerateDhParams(rclpy.node.Node):
     def calculate_tfs(self):
         """ Calculate the transformation matrices for each link in both the local and the world frame. """
         print("Calculate world tfs:")
+
         for n in LevelOrderIter(self.root_link):
             if n.type == 'link' and n.parent != None:
                 print(f"- Get tf from {n.parent.parent.id} to {n.id}")
@@ -129,11 +131,30 @@ class GenerateDhParams(rclpy.node.Node):
                 xyz = self.urdf_joints[n.parent.id]['xyz']
                 rpy = self.urdf_joints[n.parent.id]['rpy']
 
+                rot_matrix = np.eye(4)
+                joint_axis = self.urdf_joints[n.parent.id]['axis']
+                try:
+                    parent_joint_axis = self.urdf_joints[n.parent.parent.parent.id]['axis']
+                except:
+                    parent_joint_axis = joint_axis
+
+                if not np.array_equal(joint_axis, parent_joint_axis):
+                    rot_matrix = self.align_to_z_axis(
+                        joint_axis, parent_joint_axis, 4
+                    )
+
+                    print(
+                        f"Axis: {self.urdf_joints[n.parent.id]['axis']}, Rot matrix: {np.round(rot_matrix, 2)}"
+                    )
+
                 # Compute relative tf
                 tf = np.eye(4)
                 tf[0:3, 0:3] = kh.get_extrinsic_rotation(rpy)
+
                 tf[0:3, 3] = xyz
-                self.urdf_links[n.id]['rel_tf'] = tf
+                self.urdf_links[n.id]['rel_tf'] = np.matmul(tf, rot_matrix)
+                print(
+                    f"rel_tf = {np.round(self.urdf_links[n.id]['rel_tf'], 2)}")
 
                 # Compute absolute tf in world frame
                 abs_tf = np.eye(4)
@@ -145,9 +166,11 @@ class GenerateDhParams(rclpy.node.Node):
         robot_dh_params = []
         robot_dh_params_new = []
         print("\nCalculate_dh_params")
-        print("Process_order = \n", [
+
+        process_order = [
             urdf_node.id for urdf_node in LevelOrderIter(self.root_link)
-        ])
+        ]
+        print(f"Process_order = {process_order}")
 
         for urdf_node in LevelOrderIter(self.root_link):
             if urdf_node.type == 'link' and self.urdf_links[urdf_node.id]['dh_found'] == False:
@@ -248,6 +271,29 @@ class GenerateDhParams(rclpy.node.Node):
         print("\nDH Parameters New method: (markdown)")
         print(pd_frame_new.to_markdown())
 
+    def align_to_z_axis(self, joint_axis: np.ndarray, parent_joint_axis: np.ndarray, required_dim: int) -> np.ndarray:
+        """Align the joint axis to the z-axis.
+
+        Args:
+            joint_axis: The joint axis to align.
+            parent_joint_axis: The parent joint axis to align.
+            required_dim: The required dimension of the rotation matrix.
+
+        Returns:
+            The rotation matrix to align the joint axis to the z-axis.
+        """
+        rot_matrix = np.eye(required_dim)
+
+        rot_axis = np.cross(joint_axis, parent_joint_axis)
+        angle = np.arccos(np.dot(
+            joint_axis, parent_joint_axis
+        ))
+
+        print(f"Rot axis = {rot_axis}, Angle = {angle}")
+        rot_matrix[0:3, 0:3] = R.from_rotvec(angle * rot_axis).as_matrix()
+
+        return rot_matrix
+
     # TODO(lmunier) move into caseless implementation using transform matrices
     def get_joint_dh_params_new(self, rel_link_frame: np.ndarray):
         dh_params = np.zeros(4)
@@ -260,11 +306,12 @@ class GenerateDhParams(rclpy.node.Node):
 
         # 'r'
         dh_params[2] = sqrt(rel_link_frame[0, 3]**2 + rel_link_frame[1, 3]**2)
-        print(
-            "==============================================================================")
-        print(
-            f"Sign of r: {rel_link_frame[0, 3]}, {rel_link_frame[1, 3]}"
-        )
+
+        # Check for the sign of r
+        if rel_link_frame[0, 0] != 0 and rel_link_frame[0, 0] * rel_link_frame[0, 3] < 0:
+            dh_params[2] = -dh_params[2]
+        elif rel_link_frame[1, 0] != 0 and rel_link_frame[1, 0] * rel_link_frame[1, 3] < 0:
+            dh_params[2] = -dh_params[2]
 
         print(rel_link_frame)
 
@@ -281,7 +328,7 @@ class GenerateDhParams(rclpy.node.Node):
         z_axis = np.array([0, 0, 1])
 
         print(
-            f"Get joint DH params\n- Axis : {axis}\n- Relative link frame : {rel_link_frame}"
+            f"Get joint DH params\n- Axis : {axis}\n- Relative link frame :\n {rel_link_frame}"
         )
 
         # Collinear case
@@ -301,7 +348,6 @@ class GenerateDhParams(rclpy.node.Node):
         # Intersect case
         elif gh.are_intersecting(np.zeros(3), z_axis, origin_xyz, axis):
             print("- Process intersection case.")
-            print(rel_link_frame)
 
             dh_params = self.process_intersection_case(origin_xyz, axis)
             # continue

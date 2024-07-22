@@ -1,0 +1,24 @@
+services:
+  ros2:
+    user: ${ROS_USER}
+    env_file: .env
+    network_mode: host
+    build:
+      context: ./docker
+      network: host
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: humble
+        USER: ${ROS_USER}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    volumes:
+      - ./src/ros_ws:/home/${ROS_USER}/ros_ws
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    stdin_open: true
+    tty: true

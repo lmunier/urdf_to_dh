@@ -4,6 +4,11 @@
 __pycache__/
 *.py[cod]
 
+# Do not push built packages
+src/ros_ws/build/*
+src/ros_ws/install/*
+src/ros_ws/log/*
+
 # C extensions
 *.so
 
