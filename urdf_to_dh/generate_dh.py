@@ -107,7 +107,6 @@ class GenerateDhParams(rclpy.node.Node):
 
         if num_nodes_no_parent == 1:
             # Root link DH will be identity, set dh_found = True
-            # TODO: Probably not needed since order iter is used
             self.urdf_links[self.root_link.id]['dh_found'] = True
 
             print("URDF Tree:")
@@ -182,6 +181,7 @@ class GenerateDhParams(rclpy.node.Node):
                 )
 
                 dh_params = self.get_joint_dh_params(link_to_parent_dh, axis)
+                self.urdf_links[self.root_link.id]['dh_found'] = True
 
                 dh_matrix = kh.get_dh_matrix(dh_params)
                 abs_dh_matrix = np.matmul(parent_to_world_dh, dh_matrix)
@@ -299,7 +299,7 @@ class GenerateDhParams(rclpy.node.Node):
             # continue
 
         # Intersect case
-        elif gh.lines_intersect(np.zeros(3), z_axis, origin_xyz, axis)[0]:
+        elif gh.are_intersecting(np.zeros(3), z_axis, origin_xyz, axis):
             print("- Process intersection case.")
             print(rel_link_frame)
 
@@ -331,7 +331,8 @@ class GenerateDhParams(rclpy.node.Node):
     def process_intersection_case(self, origin: np.ndarray, axis: np.ndarray) -> np.ndarray:
         dh_params = np.zeros(4)
         dh_params[0] = gh.lines_intersect(
-            np.zeros(3), np.array([0, 0, 1]), origin, axis)[1][0]
+            np.zeros(3), np.array([0, 0, 1]), origin, axis
+        )[0]
 
         zaxis = np.array([0., 0., 1.])
         xaxis = np.array([1., 0., 0.])
@@ -400,7 +401,7 @@ def main():
     node.calculate_dh_params()
 
     try:
-        rclpy.spin(node)
+        rclpy.spinOnce(node)
     except:
         pass
 

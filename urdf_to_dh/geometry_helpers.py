@@ -6,11 +6,14 @@
 
 import numpy as np
 
-EPSILON = 1.0e-5
+EPSILON = 1.0e-6
 
 
 def are_parallel(vec1: np.ndarray, vec2: np.ndarray) -> bool:
     """Determine if two vectors are parallel."""
+    if np.linalg.norm(vec1) == 0 or np.linalg.norm(vec2) == 0:
+        raise ValueError("One or both of the vectors are zero vectors.")
+
     vec1_unit = vec1 / np.linalg.norm(vec1)
     vec2_unit = vec2 / np.linalg.norm(vec2)
 
@@ -38,17 +41,17 @@ def are_collinear(point1: np.ndarray, vec1: np.ndarray, point2: np.ndarray, vec2
     return np.allclose(p2, point2)
 
 
-def lines_intersect(point1: np.ndarray, vec1: np.ndarray, point2: np.ndarray, vec2: np.ndarray) -> tuple:
+def are_intersecting(point1: np.ndarray, vec1: np.ndarray, point2: np.ndarray, vec2: np.ndarray) -> bool:
     """Determine if two lines intersect."""
-    epsilon = 1e-6
-    x = np.zeros(2)
-
     if are_collinear(point1, vec1, point2, vec2):
         return False
 
-    # If lines are parallel, lines don't intersect
-    if are_parallel(vec1, vec2):
-        return False
+    return np.abs(np.cross(vec1, vec2).dot(point1 - point2)) < EPSILON
+
+
+def lines_intersect(point1: np.ndarray, vec1: np.ndarray, point2: np.ndarray, vec2: np.ndarray) -> np.ndarray:
+    """Determine if two lines intersect."""
+    x = np.zeros(2)
 
     # Test if lines intersect. Need to find non-singular pair to solve for coefficients
     for idx in range(0, 3):
@@ -65,7 +68,7 @@ def lines_intersect(point1: np.ndarray, vec1: np.ndarray, point2: np.ndarray, ve
             p1 = point1 + x[0] * vec1
             p2 = point2 + x[1] * vec2
 
-            if all(np.less(np.abs(p1 - p2), epsilon * np.ones(3))):
-                return True, x
+            if all(np.less(np.abs(p1 - p2), EPSILON * np.ones(3))):
+                return x
 
-    return False, x
+    return x
