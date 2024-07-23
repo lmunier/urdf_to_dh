@@ -22,6 +22,7 @@ import pandas as pd
 import pprint
 import xml.etree.ElementTree as ET
 
+from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 from anytree import AnyNode, LevelOrderIter, RenderTree
 from scipy.spatial.transform import Rotation as R
 from math import atan2, sqrt
@@ -40,9 +41,16 @@ class GenerateDhParams(rclpy.node.Node):
 
     def __init__(self):
         super().__init__('generate_dh_param_node')
+        default_urdf = os.path.join(
+            os.getcwd(), 'urdf_to_dh_package/urdf/random.urdf'
+        )
 
         self.get_logger().info('Initializing...')
-        self.declare_parameter('urdf_file')
+        self.declare_parameter(
+            'urdf_file',
+            default_urdf,
+            ParameterDescriptor(type=ParameterType.PARAMETER_STRING)
+        )
 
         self.urdf_joints = {}
         self.urdf_links = {}
@@ -110,12 +118,13 @@ class GenerateDhParams(rclpy.node.Node):
             # Root link DH will be identity, set dh_found = True
             self.urdf_links[self.root_link.id]['dh_found'] = True
 
-            print("URDF Tree:")
+            print(f"\nURDF Tree:")
             for pre, _, n in RenderTree(self.root_link):
                 print(f"{pre}{n.id}")
 
-            print("Joint Info:")
+            print(f"\nJoint Info:")
             pprint.pprint(self.urdf_joints)
+            print(f"\n")
         else:
             print("Error: Should only be one root link")
 
@@ -173,8 +182,8 @@ class GenerateDhParams(rclpy.node.Node):
 
                 a_val = 0
                 if abs(alpha_val) < EPSILON or abs(alpha_val) - np.pi < EPSILON:
+                    # TODO(lmunier) solve sign
                     a_val = np.sqrt(np.linalg.norm(tf[0:3, 3])**2 - d_val**2)
-                    print(f"{n.id} a_val: {a_val}")  # TODO(lmunier) solve sign
                 else:
                     a_val = np.dot(tf[0:3, 3], common_normal)
 
@@ -195,7 +204,6 @@ class GenerateDhParams(rclpy.node.Node):
                     ] + self.dh_params[urdf_node.id]
                 )
 
-        print(robot_dh_params)
         pd_frame = pd.DataFrame(
             robot_dh_params,
             columns=[
