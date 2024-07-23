@@ -31,7 +31,6 @@ import urdf_to_dh.kinematics_helpers as kh
 import urdf_to_dh.geometry_helpers as gh
 import urdf_to_dh.urdf_helpers as uh
 import urdf_to_dh.marker_helpers as mh
-from urdf_to_dh.math_basics import *
 
 
 EPSILON = 1e-6  # Tolerance for floating point comparisons
@@ -132,8 +131,8 @@ class GenerateDhParams(rclpy.node.Node):
         for n in LevelOrderIter(self.root_link):
             if n.type == 'joint':
                 joint = self.urdf_joints[n.id]
-                if self.reference_axis is None and joint['type'] == 'revolute':
-                    self.reference_axis = uh.get_reference_axis(joint)
+                if self.reference_axis is None:
+                    self.reference_axis = uh.get_reference_axis(joint) if joint['type'] == 'revolute' else  np.array([1, 0, 0])
                     print(f"Reference Axis: {self.reference_axis}")
 
                 if joint['type'] == 'fixed' and joint['axis'] == None:
@@ -181,8 +180,10 @@ class GenerateDhParams(rclpy.node.Node):
                 tf = self.urdf_links[n.id]['rel_tf']
                 joint_axis_in_parent = kh.normalize(tf[0:3, 0:3] @ joint_axis)
                 common_normal = kh.normalize(
-                    np.cross(joint_axis_in_parent, parent_joint_axis)
+                    np.cross(parent_joint_axis, joint_axis_in_parent)
                 )
+                if np.linalg.norm(common_normal) < EPSILON:
+                    common_normal = self.reference_axis
 
                 # DH parameters
                 theta_val = np.arccos(np.dot(
