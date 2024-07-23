@@ -128,14 +128,22 @@ class GenerateDhParams(rclpy.node.Node):
             print("Error: Should only be one root link")
 
         # Define axis for fixed joints
+        set_ref_axis = False
         for n in LevelOrderIter(self.root_link):
             if n.type == 'joint':
                 joint = self.urdf_joints[n.id]
+
+                if joint['type'] == 'revolute' and not set_ref_axis:
+                    self.reference_axis = uh.get_reference_axis(joint)
+                    print(f"axis of first joint: {n.id}: {self.urdf_joints[n.id]['axis']}")
+                    print(f"Set the first reference axis of the joint: {self.reference_axis}")
+                    set_ref_axis = True
+
                 if self.reference_axis is None:
                     self.reference_axis = uh.get_reference_axis(joint) if joint['type'] == 'revolute' else  np.array([1, 0, 0])
                     print(f"Reference Axis: {self.reference_axis}")
 
-                if joint['type'] == 'fixed' and joint['axis'] == None:
+                if joint['type'] == 'fixed' and joint['axis'] is None:
                     joint['axis'] = uh.get_axis(n, self.urdf_joints)
 
     def calculate_tfs(self):
@@ -183,12 +191,14 @@ class GenerateDhParams(rclpy.node.Node):
                     np.cross(parent_joint_axis, joint_axis_in_parent)
                 )
                 if np.linalg.norm(common_normal) < EPSILON:
-                    common_normal = self.reference_axis
+                    if np.linalg.norm(np.cross(parent_joint_axis, tf[0:3, 3])) < EPSILON:
+                        common_normal = kh.normalize(self.reference_axis)
+                    else:
+                        common_normal = kh.normalize(np.cross(np.cross(parent_joint_axis, tf[0:3, 3]), parent_joint_axis))
 
                 # DH parameters
-                theta_val = np.arccos(np.dot(
-                    self.reference_axis, common_normal
-                ))
+                theta_val = np.arccos(np.dot(self.reference_axis, common_normal))
+
                 print(
                     f"Theta: {theta_val} Reference Axis: {self.reference_axis} Common Normal: {common_normal}")
                 self.reference_axis = kh.inv_tf(tf)[0:3, 0:3] @ common_normal

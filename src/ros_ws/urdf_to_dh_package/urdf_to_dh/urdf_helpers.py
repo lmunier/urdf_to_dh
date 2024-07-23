@@ -27,6 +27,32 @@ def get_urdf_root(urdf_file: str) -> ET.Element:
     return tree.getroot()
 
 
+def convert_vec_to_skew(vec):
+    """
+    Description:
+        function to get the skew symmetric form of the vector
+    :param vec: 3 x 1 vector
+    :return: 3 x 3 skew symmetric matrix
+    """
+    return np.array([[0, -vec[2], vec[1]],
+                     [vec[2], 0, -vec[0]],
+                     [-vec[1], vec[0], 0]])
+
+def convert_ax_ang_to_rot(ax, ang):
+    """
+    Description:
+        function to convert the axis-angle representation to a 3 x 3 rotation matrix
+        The function uses the Rodrigues formula
+    :param ax: axis of the rotation
+    :param ang: angle of rotation in radians
+    :return: 3 x 3 rotation matrix
+    """
+    if np.linalg.norm(ax) > 1e-6:
+        ax = ax / np.linalg.norm(ax)
+
+    ax_so3 = convert_vec_to_skew(vec=ax)
+    return np.identity(3) + np.sin(ang) * ax_so3 + (1 - np.cos(ang)) * ax_so3 @ ax_so3
+
 def get_reference_axis(joint: dict, epsilon: float = 1e-10) -> np.ndarray:
     """Extracts the reference axis from the joint.
 
@@ -42,9 +68,9 @@ def get_reference_axis(joint: dict, epsilon: float = 1e-10) -> np.ndarray:
     z_axis = np.array([0, 0, 1])
 
     if np.array_equal(joint['axis'], x_axis):
-        return y_axis
-    elif np.array_equal(joint['axis'], y_axis):
         return z_axis
+    elif np.array_equal(joint['axis'], y_axis):
+        return x_axis
     elif np.array_equal(joint['axis'], z_axis):
         return x_axis
     else:
@@ -52,11 +78,12 @@ def get_reference_axis(joint: dict, epsilon: float = 1e-10) -> np.ndarray:
         if np.linalg.norm(joint) < epsilon:
             raise ValueError("Input vector is too close to zero.")
 
-        if not np.isclose(joint[0], 0) or not np.isclose(joint[1], 0):
-            return np.cross(joint, x_axis)
-        else:
-            return np.cross(joint, y_axis)
+        rot_vec = np.cross(joint['axis'], z_axis)
+        rot_angle = np.arccos(np.dot(joint['axis'], z_axis))
 
+        rot_mat = convert_ax_ang_to_rot(rot_vec, rot_angle)
+
+        return rot_mat @ x_axis
 
 def get_axis(node: AnyNode, joints: dict, direction: str = 'child') -> np.ndarray:
     """Extracts the axis of rotation from next or previous joint element.
