@@ -55,8 +55,8 @@ class GenerateDhParams(rclpy.node.Node):
         self.urdf_joints = {}
         self.urdf_links = {}
         self.urdf_tree_nodes = []
-        self.dh_params = {}
         self.root_link = None
+        self.reference_axis = None
 
         self.urdf_file = self.get_parameter(
             'urdf_file'
@@ -110,7 +110,7 @@ class GenerateDhParams(rclpy.node.Node):
         # Find root link
         num_nodes_no_parent = 0
         for n in self.urdf_tree_nodes:
-            if n.parent == None:
+            if n.is_root:
                 num_nodes_no_parent += 1
                 self.root_link = n
 
@@ -127,6 +127,17 @@ class GenerateDhParams(rclpy.node.Node):
             print(f"\n")
         else:
             print("Error: Should only be one root link")
+
+        # Define axis for fixed joints
+        for n in LevelOrderIter(self.root_link):
+            if n.type == 'joint':
+                joint = self.urdf_joints[n.id]
+                if self.reference_axis is None and joint['type'] == 'revolute':
+                    self.reference_axis = uh.get_reference_axis(joint)
+                    print(f"Reference Axis: {self.reference_axis}")
+
+                if joint['type'] == 'fixed' and joint['axis'] == None:
+                    joint['axis'] = uh.get_axis(n, self.urdf_joints)
 
     def calculate_tfs(self):
         """ Calculate the transformation matrices for each link in both the local and the world frame. """
@@ -174,6 +185,13 @@ class GenerateDhParams(rclpy.node.Node):
                 )
 
                 # DH parameters
+                theta_val = np.arccos(np.dot(
+                    self.reference_axis, common_normal
+                ))
+                print(
+                    f"Theta: {theta_val} Reference Axis: {self.reference_axis} Common Normal: {common_normal}")
+                self.reference_axis = kh.inv_tf(tf)[0:3, 0:3] @ common_normal
+
                 alpha_val = np.arccos(
                     np.dot(parent_joint_axis, joint_axis_in_parent)
                 )
@@ -188,7 +206,9 @@ class GenerateDhParams(rclpy.node.Node):
                     a_val = np.dot(tf[0:3, 3], common_normal)
 
                 self.urdf_links[n.id]['dh_found'] = True
-                self.dh_params[n.id] = [d_val, 0, a_val, alpha_val]
+                self.urdf_joints[n.id] = np.array(
+                    [d_val, theta_val, a_val, alpha_val]
+                )
 
     def display_dh_params(self):
         """ Calculate the DH parameters for each joint. """
@@ -201,7 +221,7 @@ class GenerateDhParams(rclpy.node.Node):
                         urdf_node.parent.id,
                         urdf_node.parent.parent.id,
                         urdf_node.id
-                    ] + self.dh_params[urdf_node.id]
+                    ] + self.urdf_joints[urdf_node.id].tolist()
                 )
 
         pd_frame = pd.DataFrame(

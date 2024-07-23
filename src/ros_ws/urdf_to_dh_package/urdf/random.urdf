@@ -4,7 +4,7 @@
 <!-- origin rpy values between -pi/2 and pi/2 -->
 <!-- axis xyz normalized vector with each component between -1 and 1 -->
 <robot name="randombot">
-    <link name="link0" >
+    <link name="link0">
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
@@ -20,7 +20,7 @@
         <axis xyz="1 0 0" />
         <limit effort="0" velocity="0" lower="-3.14159" upper="3.14159" />
     </joint>
-    <link name="link1"  />
+    <link name="link1" />
     <joint name="joint1" type="continuous">
         <origin xyz="-0.34587733 0.42569095 0.36387111" rpy="-1.45346392 1.38589836 0.57038676" />
         <parent link="link1" />
