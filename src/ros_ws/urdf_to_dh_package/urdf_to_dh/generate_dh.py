@@ -187,12 +187,15 @@ class GenerateDhParams(rclpy.node.Node):
                 # Get common normal
                 tf = self.urdf_links[n.id]['rel_tf']
                 joint_axis_in_parent = kh.normalize(tf[0:3, 0:3] @ joint_axis)
+
                 common_normal = kh.normalize(
                     np.cross(parent_joint_axis, joint_axis_in_parent)
                 )
                 if np.linalg.norm(common_normal) < EPSILON:
+                    # coincident revolute axis
                     if np.linalg.norm(np.cross(parent_joint_axis, tf[0:3, 3])) < EPSILON:
-                        common_normal = kh.normalize(self.reference_axis)
+                        common_normal = kh.inv_tf(tf)[0:3, 0:3] @ kh.normalize(self.reference_axis)
+                    # parallel revolute axis
                     else:
                         common_normal = kh.normalize(np.cross(np.cross(parent_joint_axis, tf[0:3, 3]), parent_joint_axis))
 
