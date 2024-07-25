@@ -200,7 +200,15 @@ class GenerateDhParams(rclpy.node.Node):
                         common_normal = kh.normalize(np.cross(np.cross(parent_joint_axis, tf[0:3, 3]), parent_joint_axis))
 
                 # DH parameters
+                theta_val, d_val, a_val, alpha_val = 0, 0, 1, 0
+                # a_val is take positive to determine its sign if theta = PI is to be changed as theta = 0
+
                 theta_val = np.arccos(np.dot(self.reference_axis, common_normal))
+                if abs(theta_val - np.pi) < EPSILON:
+                    print("assuming home position, adjusting D-H parameters to have 0 theta value")
+                    theta_val = 0
+                    common_normal = -common_normal
+                    a_val =  -a_val
 
                 print(
                     f"Theta: {theta_val} Reference Axis: {self.reference_axis} Common Normal: {common_normal}")
@@ -212,12 +220,11 @@ class GenerateDhParams(rclpy.node.Node):
 
                 d_val = np.dot(tf[0:3, 3], parent_joint_axis)
 
-                a_val = 0
                 if abs(alpha_val) < EPSILON or abs(alpha_val) - np.pi < EPSILON:
                     # TODO(lmunier) solve sign
-                    a_val = np.sqrt(np.linalg.norm(tf[0:3, 3])**2 - d_val**2)
+                    a_val =  a_val * np.sqrt(np.linalg.norm(tf[0:3, 3])**2 - d_val**2)
                 else:
-                    a_val = np.dot(tf[0:3, 3], common_normal)
+                    a_val = a_val *  np.dot(tf[0:3, 3], common_normal)
 
                 self.urdf_links[n.id]['dh_found'] = True
                 self.urdf_joints[n.id] = np.array(

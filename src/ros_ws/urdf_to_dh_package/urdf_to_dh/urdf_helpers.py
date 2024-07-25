@@ -49,6 +49,8 @@ def convert_ax_ang_to_rot(ax, ang):
     """
     if np.linalg.norm(ax) > 1e-6:
         ax = ax / np.linalg.norm(ax)
+    else:
+        return np.eye(3)
 
     ax_so3 = convert_vec_to_skew(vec=ax)
     return np.identity(3) + np.sin(ang) * ax_so3 + (1 - np.cos(ang)) * ax_so3 @ ax_so3
@@ -64,14 +66,9 @@ def get_reference_axis(joint: dict, epsilon: float = 1e-10) -> np.ndarray:
         reference_axis: The reference axis of the URDF.
     """
     x_axis = np.array([1, 0, 0])
-    y_axis = np.array([0, 1, 0])
     z_axis = np.array([0, 0, 1])
 
-    if np.array_equal(joint['axis'], x_axis):
-        return z_axis
-    elif np.array_equal(joint['axis'], y_axis):
-        return x_axis
-    elif np.array_equal(joint['axis'], z_axis):
+    if np.array_equal(joint['axis'], z_axis):
         return x_axis
     else:
         # Check if the input vector is close to zero to avoid division by zero
