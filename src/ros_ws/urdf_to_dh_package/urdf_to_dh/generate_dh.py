@@ -200,7 +200,7 @@ class GenerateDhParams(rclpy.node.Node):
                         common_normal = kh.normalize(np.cross(np.cross(parent_joint_axis, tf[0:3, 3]), parent_joint_axis))
 
                 # DH parameters
-                theta_val, d_val, a_val, alpha_val = 0, 0, 1, 0
+                theta_val, d_val, a_val, alpha_val = 0, 0, 1, 1
                 # a_val is take positive to determine its sign if theta = PI is to be changed as theta = 0
 
                 theta_val = np.arccos(np.dot(self.reference_axis, common_normal))
@@ -209,12 +209,13 @@ class GenerateDhParams(rclpy.node.Node):
                     theta_val = 0
                     common_normal = -common_normal
                     a_val =  -a_val
+                    alpha_val = -alpha_val
 
                 print(
                     f"Theta: {theta_val} Reference Axis: {self.reference_axis} Common Normal: {common_normal}")
                 self.reference_axis = kh.inv_tf(tf)[0:3, 0:3] @ common_normal
 
-                alpha_val = np.arccos(
+                alpha_val = alpha_val * np.arccos(
                     np.dot(parent_joint_axis, joint_axis_in_parent)
                 )
 
