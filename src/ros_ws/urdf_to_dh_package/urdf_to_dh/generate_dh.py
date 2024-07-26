@@ -24,16 +24,14 @@ import xml.etree.ElementTree as ET
 
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 from anytree import AnyNode, LevelOrderIter, RenderTree
-from scipy.spatial.transform import Rotation as R
-from math import atan2, sqrt
+from math import pow
 
 import urdf_to_dh.kinematics_helpers as kh
-import urdf_to_dh.geometry_helpers as gh
 import urdf_to_dh.urdf_helpers as uh
-import urdf_to_dh.marker_helpers as mh
 
 
-EPSILON = 1e-6  # Tolerance for floating point comparisons
+PRECISION = 8  # Number of decimal places to round to or compare to be close enough
+EPSILON = pow(10, -PRECISION)  # Tolerance for floating point comparisons
 
 
 class GenerateDhParams(rclpy.node.Node):
@@ -128,23 +126,18 @@ class GenerateDhParams(rclpy.node.Node):
             print("Error: Should only be one root link")
 
         # Define axis for fixed joints
-        set_ref_axis = False
         for n in LevelOrderIter(self.root_link):
             if n.type == 'joint':
                 joint = self.urdf_joints[n.id]
 
-                if joint['type'] == 'revolute' and not set_ref_axis:
-                    self.reference_axis = uh.get_reference_axis(joint)
-                    print(f"axis of first joint: {n.id}: {self.urdf_joints[n.id]['axis']}")
-                    print(f"Set the first reference axis of the joint: {self.reference_axis}")
-                    set_ref_axis = True
-
-                if self.reference_axis is None:
-                    self.reference_axis = uh.get_reference_axis(joint) if joint['type'] == 'revolute' else  np.array([1, 0, 0])
-                    print(f"Reference Axis: {self.reference_axis}")
-
                 if joint['type'] == 'fixed' and joint['axis'] is None:
                     joint['axis'] = uh.get_axis(n, self.urdf_joints)
+
+                if self.reference_axis is None:
+                    self.reference_axis = uh.get_reference_axis(
+                        joint
+                    )
+                    print(f"Reference Axis: {self.reference_axis}\n")
 
     def calculate_tfs(self):
         """ Calculate the transformation matrices for each link in both the local and the world frame. """
@@ -170,67 +163,114 @@ class GenerateDhParams(rclpy.node.Node):
                 if self.urdf_links[n.id]['dh_found']:
                     continue
 
-                joint_axis = kh.normalize(
-                    self.urdf_joints[n.parent.id]['axis']
+                joint_axis, parent_joint_axis = self.get_joint_and_parent_axis(
+                    n
                 )
 
-                try:
-                    if self.urdf_joints[n.parent.parent.parent.id]['type'] in ["fixed", None]:
-                        parent_joint_axis = joint_axis
-                    else:
-                        parent_joint_axis = kh.normalize(
-                            self.urdf_joints[n.parent.parent.parent.id]['axis']
-                        )
-                except:
-                    parent_joint_axis = joint_axis
-
-                # Get common normal
                 tf = self.urdf_links[n.id]['rel_tf']
                 joint_axis_in_parent = kh.normalize(tf[0:3, 0:3] @ joint_axis)
 
-                common_normal = kh.normalize(
-                    np.cross(parent_joint_axis, joint_axis_in_parent)
+                common_normal = self.get_common_normal(
+                    parent_joint_axis, joint_axis_in_parent, tf,
                 )
-                if np.linalg.norm(common_normal) < EPSILON:
-                    # coincident revolute axis
-                    if np.linalg.norm(np.cross(parent_joint_axis, tf[0:3, 3])) < EPSILON:
-                        common_normal = kh.inv_tf(tf)[0:3, 0:3] @ kh.normalize(self.reference_axis)
-                    # parallel revolute axis
-                    else:
-                        common_normal = kh.normalize(np.cross(np.cross(parent_joint_axis, tf[0:3, 3]), parent_joint_axis))
 
                 # DH parameters
-                theta_val, d_val, a_val, alpha_val = 0, 0, 1, 1
+                theta_val, d_val, a_val, alpha_val = 0.0, 0.0, 1.0, 1.0
                 # a_val is take positive to determine its sign if theta = PI is to be changed as theta = 0
 
-                theta_val = np.arccos(np.dot(self.reference_axis, common_normal))
-                if abs(theta_val - np.pi) < EPSILON:
-                    print("assuming home position, adjusting D-H parameters to have 0 theta value")
-                    theta_val = 0
-                    common_normal = -common_normal
-                    a_val =  -a_val
-                    alpha_val = -alpha_val
-
-                print(
-                    f"Theta: {theta_val} Reference Axis: {self.reference_axis} Common Normal: {common_normal}")
-                self.reference_axis = kh.inv_tf(tf)[0:3, 0:3] @ common_normal
-
-                alpha_val = alpha_val * np.arccos(
-                    np.dot(parent_joint_axis, joint_axis_in_parent)
+                theta_val = np.arccos(
+                    np.dot(self.reference_axis, common_normal)
                 )
 
+                theta_val, a_val, alpha_val, common_normal = self.adjust_dh_sign(
+                    theta_val, a_val, alpha_val, common_normal
+                )
+                self.reference_axis = kh.inv_tf(tf)[0:3, 0:3] @ common_normal
+
+                alpha_val *= np.arccos(
+                    np.dot(parent_joint_axis, joint_axis_in_parent)
+                )
+                alpha_val = 0 if np.abs(alpha_val) < EPSILON else alpha_val
+
+                # 'd'
                 d_val = np.dot(tf[0:3, 3], parent_joint_axis)
 
-                if abs(alpha_val) < EPSILON or abs(alpha_val) - np.pi < EPSILON:
-                    # TODO(lmunier) solve sign
-                    a_val =  a_val * np.sqrt(np.linalg.norm(tf[0:3, 3])**2 - d_val**2)
+                # 'a' or 'r'
+                if np.abs(alpha_val) < EPSILON or np.abs(alpha_val) - np.pi < EPSILON:
+                    a_val *= np.sqrt(np.linalg.norm(tf[0:3, 3])**2 - d_val**2)
                 else:
-                    a_val = a_val *  np.dot(tf[0:3, 3], common_normal)
+                    a_val *= np.dot(tf[0:3, 3], common_normal)
+
+                # Round and adjust values
+                alpha_val, d_val = self.adjust_dh_sign(alpha_val, d_val)
+                d_val = 0 if abs(d_val) < EPSILON else round(d_val, PRECISION)
+                a_val = 0 if abs(a_val) < EPSILON else round(a_val, PRECISION)
 
                 self.urdf_links[n.id]['dh_found'] = True
                 self.urdf_joints[n.id] = np.array(
                     [d_val, theta_val, a_val, alpha_val]
                 )
+
+    def get_joint_and_parent_axis(self, node: AnyNode) -> tuple:
+        """ Get the joint and parent axis.
+
+        Args:
+            node: The joint node to get the joint and parent axis from.
+
+        Returns:
+            joint_axis: The axis of the joint.
+            parent_joint_axis: The axis of the parent joint.
+        """
+        parent_joint_axis = None
+        joint_axis = kh.normalize(
+            self.urdf_joints[node.parent.id]['axis']
+        )
+
+        try:
+            if self.urdf_joints[node.parent.parent.parent.id]['type'] in ["fixed", None]:
+                parent_joint_axis = joint_axis
+            else:
+                parent_joint_axis = kh.normalize(
+                    self.urdf_joints[node.parent.parent.parent.id]['axis']
+                )
+        except:
+            parent_joint_axis = joint_axis
+
+        return joint_axis, parent_joint_axis
+
+    def get_common_normal(
+        self, parent_joint_axis: np.ndarray, joint_axis_in_parent: np.ndarray,
+        tf: np.ndarray
+    ) -> np.ndarray:
+        """ Get the common normal.
+
+        Args:
+            parent_joint_axis: The axis of the parent joint.
+            joint_axis_in_parent: The axis of the joint in the parent joint.
+            tf: The transformation matrix.
+
+        Returns:
+            common_normal: The common normal between the joint and the parent joint.
+        """
+        common_normal = kh.normalize(
+            np.cross(parent_joint_axis, joint_axis_in_parent)
+        )
+
+        if np.linalg.norm(common_normal) < EPSILON:
+            # Coincident revolute axis
+            if np.linalg.norm(np.cross(parent_joint_axis, tf[0:3, 3])) < EPSILON:
+                common_normal = kh.inv_tf(
+                    tf
+                )[0:3, 0:3] @ kh.normalize(self.reference_axis)
+
+            # Parallel revolute axis
+            else:
+                common_normal = kh.normalize(np.cross(
+                    np.cross(parent_joint_axis, tf[0:3, 3]),
+                    parent_joint_axis
+                ))
+
+        return common_normal
 
     def display_dh_params(self):
         """ Calculate the DH parameters for each joint. """
@@ -274,9 +314,30 @@ class GenerateDhParams(rclpy.node.Node):
 
         print(pd_frame.to_markdown())
 
+    def adjust_dh_sign(self, angle: float, *args: list) -> tuple:
+        """ Adjust the sign of the value based on the angle. """
+        adapted_values = (angle, ) + args
+
+        if np.cos(angle) < 0 and np.abs(np.cos(angle)) > EPSILON:
+            angle -= np.pi
+            adapted_values = (angle,)
+
+            for v in args:
+                if type(v) in [int, float]:
+                    v = -v if abs(v) > EPSILON else 0
+                elif type(v) in [np.int32, np.float32, np.int64, np.float64]:
+                    v = -v if np.abs(v) > EPSILON else 0
+                elif type(v) is np.ndarray:
+                    v = -v if np.linalg.norm(v) > EPSILON else 0
+                else:
+                    print(f'ERROR: Type {type(v)} not managed.')
+
+                adapted_values += (v,)
+
+        return adapted_values
+
 
 def main():
-    print('Starting GenerateDhParams Node...')
     rclpy.init()
     node = GenerateDhParams()
     node.parse_urdf()

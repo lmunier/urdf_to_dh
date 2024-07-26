@@ -25,7 +25,9 @@ This will build then run the docker container. To access it interactively with a
 
 ```bash
 docker exec -it <name_of_container> bash
-docker exec -it urdf_to_dh-ros2-1 bash # by example, in our case
+
+# ex.)
+docker exec -it urdf_to_dh-ros2-1 bash
 ```
 
 ## Access implemented code inside container
@@ -34,8 +36,9 @@ To access your current work without modifying your docker compose configuration,
 
 ## Running the node
 
-```sh: terminal
+```bash
 ros2 run urdf_to_dh generate_dh --ros-args -p urdf_file:="<path_to_my_urdf>"
+
 # ex.)
 ros2 run urdf_to_dh generate_dh --ros-args -p urdf_file:=/home/ubuntu/dev_ws/src/urdf_to_dh/urdf/ur5.urdf
 ```
@@ -43,13 +46,13 @@ ros2 run urdf_to_dh generate_dh --ros-args -p urdf_file:=/home/ubuntu/dev_ws/src
 ## DH parameters confirm
 To check the robot link, do the following:
 
-```sh: terminal
+```bash
 python3 view_trajectory_dh.py
 ```
 
 To check the trajectory in 3D animation, do the following:
 
-```sh: terminal
+```bash
 python3 view_trajectory3d_dh.py
 ```
 

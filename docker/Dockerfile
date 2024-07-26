@@ -43,7 +43,8 @@ RUN pip3 install --upgrade \
     pandas \
     anytree \
     tabulate \
-    scipy
+    scipy \
+    matplotlib
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc
 

@@ -27,33 +27,40 @@ def get_urdf_root(urdf_file: str) -> ET.Element:
     return tree.getroot()
 
 
-def convert_vec_to_skew(vec):
-    """
-    Description:
-        function to get the skew symmetric form of the vector
-    :param vec: 3 x 1 vector
-    :return: 3 x 3 skew symmetric matrix
+def convert_vec_to_skew(vec: np.ndarray) -> np.ndarray:
+    """Function to get the skew symmetric form of the vector.
+
+    Args:
+        vec: 3 x 1 vector.
+
+    Returns:
+        skew symmetric matrix.
     """
     return np.array([[0, -vec[2], vec[1]],
                      [vec[2], 0, -vec[0]],
                      [-vec[1], vec[0], 0]])
 
-def convert_ax_ang_to_rot(ax, ang):
-    """
-    Description:
-        function to convert the axis-angle representation to a 3 x 3 rotation matrix
-        The function uses the Rodrigues formula
-    :param ax: axis of the rotation
-    :param ang: angle of rotation in radians
-    :return: 3 x 3 rotation matrix
-    """
-    if np.linalg.norm(ax) > 1e-6:
-        ax = ax / np.linalg.norm(ax)
-    else:
-        return np.eye(3)
 
-    ax_so3 = convert_vec_to_skew(vec=ax)
-    return np.identity(3) + np.sin(ang) * ax_so3 + (1 - np.cos(ang)) * ax_so3 @ ax_so3
+def convert_ax_ang_to_rot(axis: np.ndarray, angle: float, epsilon: float = 1e-10) -> np.ndarray:
+    """Function to convert the axis-angle representation to a 3 x 3 rotation matrix.
+    The function uses the Rodrigues formula
+
+    Args:
+        axis: The axis of rotation.
+        angle: The angle of rotation.
+        epsilon: The tolerance for floating point comparisons.
+
+    Returns:
+        rot_mat: The rotation matrix.
+    """
+    if np.linalg.norm(axis) < epsilon:
+        return np.eye(3)
+    else:
+        axis /= np.linalg.norm(axis)
+
+    axis_so3 = convert_vec_to_skew(vec=axis)
+    return np.identity(3) + np.sin(angle) * axis_so3 + (1 - np.cos(angle)) * axis_so3 @ axis_so3
+
 
 def get_reference_axis(joint: dict, epsilon: float = 1e-10) -> np.ndarray:
     """Extracts the reference axis from the joint.
@@ -67,20 +74,22 @@ def get_reference_axis(joint: dict, epsilon: float = 1e-10) -> np.ndarray:
     """
     x_axis = np.array([1, 0, 0])
     z_axis = np.array([0, 0, 1])
+    joint_axis = joint['axis']
 
-    if np.array_equal(joint['axis'], z_axis):
+    if np.array_equal(joint_axis, z_axis):
         return x_axis
     else:
         # Check if the input vector is close to zero to avoid division by zero
-        if np.linalg.norm(joint) < epsilon:
+        if np.linalg.norm(joint_axis) < epsilon:
             raise ValueError("Input vector is too close to zero.")
 
-        rot_vec = np.cross(joint['axis'], z_axis)
-        rot_angle = np.arccos(np.dot(joint['axis'], z_axis))
+        rot_vec = np.cross(joint_axis, z_axis)
+        rot_angle = np.arccos(np.dot(joint_axis, z_axis))
 
         rot_mat = convert_ax_ang_to_rot(rot_vec, rot_angle)
 
         return rot_mat @ x_axis
+
 
 def get_axis(node: AnyNode, joints: dict, direction: str = 'child') -> np.ndarray:
     """Extracts the axis of rotation from next or previous joint element.
