@@ -102,6 +102,8 @@ def get_axis(node: AnyNode, joints: dict, direction: str = 'child') -> np.ndarra
     Returns:
         axis: The axis of rotation of the joint.
     """
+    is_leaf = False
+    is_root = False
     next_node = None
     next_direction = direction
 
@@ -109,10 +111,15 @@ def get_axis(node: AnyNode, joints: dict, direction: str = 'child') -> np.ndarra
     if joints[node.id]['axis'] is not None:
         return joints[node.id]['axis']
 
-    # Check if it is the start or the end of the tree
-    if node.children[0].is_leaf:
+    # Check if it is the start or the end of the tree to set the next direction
+    is_leaf = node.children[0].is_leaf
+    is_root = node.parent.is_root
+
+    if is_leaf and is_root:
+        return None
+    elif is_leaf:
         next_direction = 'parent'
-    elif node.parent.is_root:
+    elif is_root:
         next_direction = 'child'
 
     # Store the next node to extract the axis from
@@ -122,7 +129,7 @@ def get_axis(node: AnyNode, joints: dict, direction: str = 'child') -> np.ndarra
         next_node = node.parent.parent
     else:
         print(
-            f"ERROR: {next} is not a known next joint direction. Should be ['child' or 'parent']."
+            f"ERROR: {next_direction} is not a known next joint direction. Should be ['child' or 'parent']."
         )
 
     # Recursive call
