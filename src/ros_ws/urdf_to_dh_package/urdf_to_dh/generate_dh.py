@@ -48,9 +48,15 @@ class GenerateDhParams(rclpy.node.Node):
             default_urdf,
             ParameterDescriptor(type=ParameterType.PARAMETER_STRING)
         )
+        self.declare_parameter(
+            'zero_pos',
+            True,
+            ParameterDescriptor(type=ParameterType.PARAMETER_BOOL)
+        )
 
         self.urdf_joints = {}
         self.urdf_links = {}
+        self.carry_forward = {}
         self.urdf_tree_nodes = []
         self.root_link = None
         self.reference_axis = None
@@ -58,6 +64,12 @@ class GenerateDhParams(rclpy.node.Node):
         self.urdf_file = self.get_parameter(
             'urdf_file'
         ).get_parameter_value().string_value
+
+        self.zero_pos = self.get_parameter(
+            'zero_pos'
+        ).get_parameter_value().bool_value
+
+        print(f"Zero position : {self.zero_pos}")
 
         self.get_logger().info('URDF file = %s' % self.urdf_file)
 
@@ -282,6 +294,11 @@ class GenerateDhParams(rclpy.node.Node):
                 if self.urdf_links[n.id]['dh_found']:
                     continue
 
+                self.carry_forward[n.id] = {
+                    'd': 0,
+                    'theta': 0
+                }
+
                 joint_axis, parent_joint_axis = self.__get_joint_and_parent_axis(
                     n
                 )
@@ -300,6 +317,9 @@ class GenerateDhParams(rclpy.node.Node):
                 theta_val = np.arccos(
                     np.dot(self.reference_axis, common_normal)
                 )
+                theta_val += self.carry_forward.get(
+                    n.parent.parent.id, {}
+                ).get('theta', 0)
 
                 theta_val, a_val, alpha_val, common_normal = self.__adjust_dh_sign(
                     theta_val, a_val, alpha_val, common_normal
@@ -315,15 +335,39 @@ class GenerateDhParams(rclpy.node.Node):
                 d_val = np.dot(tf[0:3, 3], parent_joint_axis)
 
                 # 'a' or 'r'
-                if np.abs(alpha_val) < EPSILON or np.abs(alpha_val) - np.pi < EPSILON:
-                    a_val *= np.sqrt(np.linalg.norm(tf[0:3, 3])**2 - d_val**2)
+                temp_val = np.abs(np.linalg.norm(tf[0:3, 3])**2 - d_val**2)
+                if np.abs(alpha_val) < EPSILON or np.abs(np.abs(alpha_val) - np.pi) < EPSILON:
+                    a_val *= np.sqrt(temp_val)
                 else:
                     a_val *= np.dot(tf[0:3, 3], common_normal)
 
                 # Round and adjust values
                 alpha_val, d_val = self.__adjust_dh_sign(alpha_val, d_val)
-                d_val = 0 if abs(d_val) < EPSILON else round(d_val, PRECISION)
-                a_val = 0 if abs(a_val) < EPSILON else round(a_val, PRECISION)
+                d_val = 0 if np.abs(d_val) < EPSILON else np.round(
+                    d_val, PRECISION
+                )
+                a_val = 0 if np.abs(a_val) < EPSILON else np.round(
+                    a_val, PRECISION
+                )
+
+                if np.abs(temp_val - a_val**2) > EPSILON:
+                    self.carry_forward[n.id]['d'] = np.sqrt(
+                        np.abs(temp_val - a_val**2)
+                    )
+                else:
+                    self.carry_forward[n.id]['d'] = 0
+
+                self.carry_forward[n.id]['theta'] = 0
+                print(f"temp val: {np.abs(temp_val - a_val**2)}")
+                print(
+                    f"Carry Forward Parent: {self.carry_forward.get(n.parent.parent.id, {})}, parent id : {n.parent.parent.id}"
+                )
+                print(
+                    f"Carry Forward: {self.carry_forward.get(n.id, {})}"
+                )
+                d_val += self.carry_forward.get(
+                    n.parent.parent.id, {}
+                ).get('d', 0)
 
                 self.urdf_links[n.id]['dh_found'] = True
                 self.urdf_joints[n.id] = np.array(
