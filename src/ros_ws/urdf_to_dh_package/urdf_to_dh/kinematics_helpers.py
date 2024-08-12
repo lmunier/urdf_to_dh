@@ -136,3 +136,16 @@ def get_dh_matrix(dh_params: list) -> np.ndarray:
     dh_matrix[2, 3] = d
 
     return dh_matrix
+
+
+def get_single_transformation(d_val, theta_val, a_val, alpha_val):
+    x_rot = np.eye(4)
+    z_rot = np.eye(4)
+    z_trans = np.eye(4)
+    z_trans[2, 3] = d_val
+    x_trans = np.eye(4)
+    x_trans[0, 3] = a_val
+    x_rot[:3, :3] = x_rotation(alpha_val)
+    z_rot[:3, :3] = z_rotation(theta_val)
+
+    return z_trans @ z_rot @ x_trans @ x_rot

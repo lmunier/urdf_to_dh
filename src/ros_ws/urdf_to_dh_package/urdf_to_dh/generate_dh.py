@@ -50,7 +50,7 @@ class GenerateDhParams(rclpy.node.Node):
         )
         self.declare_parameter(
             'zero_pos',
-            True,
+            False,
             ParameterDescriptor(type=ParameterType.PARAMETER_BOOL)
         )
 
@@ -217,9 +217,7 @@ class GenerateDhParams(rclpy.node.Node):
         if np.linalg.norm(common_normal) < EPSILON:
             # Coincident revolute axis
             if np.linalg.norm(np.cross(parent_joint_axis, tf[0:3, 3])) < EPSILON:
-                common_normal = kh.inv_tf(
-                    tf
-                )[0:3, 0:3] @ kh.normalize(self.reference_axis)
+                common_normal = kh.inv_tf(tf)[0:3, 0:3] @ kh.normalize(self.reference_axis)
 
             # Parallel revolute axis
             else:
@@ -317,13 +315,12 @@ class GenerateDhParams(rclpy.node.Node):
                 theta_val = np.arccos(
                     np.dot(self.reference_axis, common_normal)
                 )
-                theta_val += self.carry_forward.get(
-                    n.parent.parent.id, {}
-                ).get('theta', 0)
 
-                theta_val, a_val, alpha_val, common_normal = self.__adjust_dh_sign(
-                    theta_val, a_val, alpha_val, common_normal
-                )
+                if self.zero_pos:
+                    theta_val, a_val, alpha_val, common_normal = self.__adjust_dh_sign(
+                        theta_val, a_val, alpha_val, common_normal
+                    )
+
                 self.reference_axis = kh.inv_tf(tf)[0:3, 0:3] @ common_normal
 
                 alpha_val *= np.arccos(
@@ -333,16 +330,15 @@ class GenerateDhParams(rclpy.node.Node):
 
                 # 'd'
                 d_val = np.dot(tf[0:3, 3], parent_joint_axis)
-
-                # 'a' or 'r'
-                temp_val = np.abs(np.linalg.norm(tf[0:3, 3])**2 - d_val**2)
-                if np.abs(alpha_val) < EPSILON or np.abs(np.abs(alpha_val) - np.pi) < EPSILON:
-                    a_val *= np.sqrt(temp_val)
-                else:
-                    a_val *= np.dot(tf[0:3, 3], common_normal)
+                a_val = np.dot(tf[0:3, 3] - d_val * parent_joint_axis, common_normal)
+                d_val += self.carry_forward.get(
+                    n.parent.parent.id, {}
+                ).get('d', 0)
 
                 # Round and adjust values
-                alpha_val, d_val = self.__adjust_dh_sign(alpha_val, d_val)
+                if self.zero_pos:
+                    alpha_val, d_val = self.__adjust_dh_sign(alpha_val, d_val)
+
                 d_val = 0 if np.abs(d_val) < EPSILON else np.round(
                     d_val, PRECISION
                 )
@@ -350,24 +346,27 @@ class GenerateDhParams(rclpy.node.Node):
                     a_val, PRECISION
                 )
 
-                if np.abs(temp_val - a_val**2) > EPSILON:
-                    self.carry_forward[n.id]['d'] = np.sqrt(
-                        np.abs(temp_val - a_val**2)
-                    )
+                origin_transformed = (
+                        kh.get_single_transformation(d_val, theta_val, a_val, alpha_val) @ np.array([0, 0, 0, 1])
+                )
+                d_remaining = np.dot(tf[0:3, 3] - origin_transformed[0:3], joint_axis_in_parent)
+
+                if np.abs(d_remaining) > EPSILON:
+                    self.carry_forward[n.id]['d'] = d_remaining
                 else:
                     self.carry_forward[n.id]['d'] = 0
 
                 self.carry_forward[n.id]['theta'] = 0
-                print(f"temp val: {np.abs(temp_val - a_val**2)}")
-                print(
-                    f"Carry Forward Parent: {self.carry_forward.get(n.parent.parent.id, {})}, parent id : {n.parent.parent.id}"
-                )
-                print(
-                    f"Carry Forward: {self.carry_forward.get(n.id, {})}"
-                )
-                d_val += self.carry_forward.get(
-                    n.parent.parent.id, {}
-                ).get('d', 0)
+
+                print(f"origin transformed : {origin_transformed[:3]}, actual recorded : {tf[0:3, 3]}, "
+                      f"joint axis in parent : {joint_axis_in_parent}")
+                print(f"d, theta, a, alpha : {d_val, theta_val, a_val, alpha_val}")
+                print(f"carry forward : {d_remaining}")
+                print(tf)
+                print(f"joint axis: {joint_axis}, joint axis in parent : {joint_axis_in_parent}")
+
+                if self.carry_forward[n.id]['d'] != 0:
+                    print(kh.get_single_transformation(d_val, theta_val, a_val, alpha_val))
 
                 self.urdf_links[n.id]['dh_found'] = True
                 self.urdf_joints[n.id] = np.array(
@@ -399,7 +398,7 @@ class GenerateDhParams(rclpy.node.Node):
 
         base_filename = os.path.splitext(os.path.basename(self.urdf_file))[0]
         save_dir = os.path.join(
-            os.getcwd(), 'urdf_to_dh_package/dh_parameters'
+            os.getcwd(), 'dh_parameters'
         )
         csv_file_path = os.path.join(save_dir, f"{base_filename}_dh.csv")
         markdown_file_path = os.path.join(save_dir, f"{base_filename}_dh.md")

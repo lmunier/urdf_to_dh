@@ -117,7 +117,7 @@
   <link name="base_link"/>
   <link name="base_link_inertia">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
         <mesh filename="package://ur_description/meshes/ur5/visual/base.dae"/>
       </geometry>
@@ -126,7 +126,7 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
         <mesh filename="package://ur_description/meshes/ur5/collision/base.stl"/>
       </geometry>
@@ -279,14 +279,14 @@
            Use the joint between 'base_link' and 'base_link_inertia' (a dummy
            link/frame) to introduce the necessary rotation over Z (of pi rad).
       -->
-    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <origin rpy="0 0 1.5707963267948966" xyz="0 0 0"/>
   </joint>
   <joint name="shoulder_pan_joint" type="revolute">
     <parent link="base_link_inertia"/>
     <child link="shoulder_link"/>
     <origin rpy="0 0 0" xyz="0 0 0.089159"/>
     <axis xyz="0 0 1"/>
-    <limit effort="150.0" lower="-3.141592653589793" upper="3.141592653589793" velocity="3.141592653589793"/>
+    <limit effort="150.0" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.141592653589793"/>
     <dynamics damping="0" friction="0"/>
   </joint>
   <joint name="shoulder_lift_joint" type="revolute">
@@ -294,7 +294,7 @@
     <child link="upper_arm_link"/>
     <origin rpy="1.570796327 0 0" xyz="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit effort="150.0" lower="-3.141592653589793" upper="3.141592653589793" velocity="3.141592653589793"/>
+    <limit effort="150.0" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.141592653589793"/>
     <dynamics damping="0" friction="0"/>
   </joint>
   <joint name="elbow_joint" type="revolute">
@@ -310,7 +310,7 @@
     <child link="wrist_1_link"/>
     <origin rpy="0 0 0" xyz="-0.39225 0 0.10915"/>
     <axis xyz="0 0 1"/>
-    <limit effort="28.0" lower="-3.141592653589793" upper="3.141592653589793" velocity="3.141592653589793"/>
+    <limit effort="28.0" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.141592653589793"/>
     <dynamics damping="0" friction="0"/>
   </joint>
   <joint name="wrist_2_joint" type="revolute">
@@ -318,7 +318,7 @@
     <child link="wrist_2_link"/>
     <origin rpy="1.570796327 0 0" xyz="0 -0.09465 -1.941303950897609e-11"/>
     <axis xyz="0 0 1"/>
-    <limit effort="28.0" lower="-3.141592653589793" upper="3.141592653589793" velocity="3.141592653589793"/>
+    <limit effort="28.0" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.141592653589793"/>
     <dynamics damping="0" friction="0"/>
   </joint>
   <joint name="wrist_3_joint" type="revolute">
@@ -326,7 +326,7 @@
     <child link="wrist_3_link"/>
     <origin rpy="1.570796326589793 3.141592653589793 3.141592653589793" xyz="0 0.0823 -1.688001216681175e-11"/>
     <axis xyz="0 0 1"/>
-    <limit effort="28.0" lower="-3.141592653589793" upper="3.141592653589793" velocity="3.141592653589793"/>
+    <limit effort="28.0" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.141592653589793"/>
     <dynamics damping="0" friction="0"/>
   </joint>
   <!-- ROS-Industrial 'base' frame: base_link to UR 'Base' Coordinates transform -->
