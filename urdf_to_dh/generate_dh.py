@@ -182,6 +182,7 @@ class GenerateDhParams(rclpy.node.Node):
                 )
 
                 dh_params = self.get_joint_dh_params(link_to_parent_dh, axis)
+                self.urdf_links[urdf_node.id]['dh_found'] = True
 
                 dh_matrix = kh.get_dh_matrix(dh_params)
                 abs_dh_matrix = np.matmul(parent_to_world_dh, dh_matrix)
